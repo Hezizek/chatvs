@@ -1,0 +1,132 @@
+/* html/granularity-panel.css */
+
+/* --- 1. 全局布局框架 (核心修改) --- */
+html, body {
+    height: 100%;        /* 占满 Webview 高度 */
+    margin: 0;
+    padding: 0;
+    overflow: hidden;    /* 禁止整个页面滚动，为了固定头部 */
+}
+
+body {
+    display: flex;       /* 启用 Flex 布局 */
+    flex-direction: column; /* 垂直排列：上部是按钮，下部是内容 */
+    padding: 10px;
+    box-sizing: border-box; /* 让 padding 包含在 height 计算中 */
+    
+    /* 基础字体与颜色 */
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    background-color: var(--vscode-editor-background);
+    gap: 15px;
+}
+
+/* --- 2. 顶部按钮区域 (固定不动) --- */
+.button-bar {
+    flex-shrink: 0;      /* 禁止被压缩，确保始终完整显示 */
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;     /* 按钮本身也可以换行，防止窗口太窄 */
+    
+    /* 可选：加一个底部分割线，让分区更明显 */
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 6px 14px;
+    font-family: inherit;
+    cursor: pointer;
+    outline: none;
+    border-radius: 2px;
+}
+
+button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+/* --- 3. 历史记录容器 (占据剩余空间 + 垂直滚动) --- */
+.granularity-container {
+    flex: 1;             /* 霸占剩余的所有垂直空间 */
+    overflow-y: auto;    /* 关键：内容超出时，只在这个区域内垂直滚动 */
+    min-height: 0;       /* 修复 Flexbox 嵌套滚动条的常见 bug */
+    
+    display: flex;
+    flex-direction: column;
+}
+
+.chain-title {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 0.9em;
+    font-weight: bold;
+    opacity: 0.8;
+    flex-shrink: 0;
+}
+
+/* --- 4. 粒度链表 (自动换行) --- */
+.granularity-chain {
+    display: flex;
+    flex-wrap: wrap;     /* 关键：允许节点换行 */
+    align-items: center; /* 垂直居中对齐 */
+    gap: 10px;           /* 节点之间的间距 */
+    
+    padding-bottom: 20px; /* 底部留一点余量，防止滚动到底部太贴边 */
+}
+
+/* --- 5. 节点样式 (保持不变) --- */
+.granularity-node {
+    width: 120px;              
+    height: 40px;              
+    flex-shrink: 0;            
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    padding: 0 10px;
+    border: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-descriptionForeground);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.granularity-node:hover {
+    background-color: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-focusBorder);
+}
+
+.granularity-node.active {
+    border-color: var(--vscode-focusBorder);
+    color: var(--vscode-foreground);
+    font-weight: bold;
+    background-color: var(--vscode-list-activeSelectionBackground);
+}
+
+.node-desc {
+    font-size: 0.9em;
+    width: 100%;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* --- 箭头样式 --- */
+.arrow {
+    color: var(--vscode-descriptionForeground);
+    font-size: 1.2em;
+    flex-shrink: 0;
+    
+    /* 微调箭头位置，使其在换行时也不至于太乱 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px; 
+}

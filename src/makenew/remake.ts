@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 
 export const remake = (context: vscode.ExtensionContext) => {
     let activeEditor = vscode.window.activeTextEditor;

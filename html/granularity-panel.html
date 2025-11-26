@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="{{styleUri}}" rel="stylesheet">
+    <title>粒度面板</title>
+</head>
+<body>
+    <div class="button-bar">
+        <button onclick="sendCommand('refinement.globalRefine')">全局精化</button>
+        <button onclick="sendCommand('refinement.localRefine')">局部精化</button>
+        <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
+        <button onclick="sendCommand('refinement.generateCode')">生成代码</button>
+    </div>
+
+    <div class="granularity-container">
+        <div class="chain-title">粒度历史</div>
+        <div class="granularity-chain" id="chain-root"></div>
+    </div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+        const chainRoot = document.getElementById('chain-root');
+
+        function sendCommand(commandId) {
+            vscode.postMessage({ type: 'executeCommand', commandId: commandId });
+        }
+
+        window.addEventListener('message', event => {
+            const message = event.data;
+            if (message.type === 'updateChain') {
+                renderChain(message.data);
+            }
+        });
+
+        // [核心修改] 渲染函数
+        // src/extension.ts 中的 renderChain 函数
+
+		function renderChain(nodes) {
+			chainRoot.innerHTML = '';
+						
+			nodes.forEach((node, index) => {
+				const nodeDiv = document.createElement('div');
+				nodeDiv.className = 'granularity-node';
+							
+				// 1. [需求实现] 鼠标悬浮显示全部内容
+				// title 属性是 HTML 原生特性，会自动产生一个跟随鼠标的文本提示框
+				nodeDiv.title = node.description; 
+
+				// 2. [需求实现] 只显示 description，不再显示 "粒度 n"
+				// 如果描述为空，为了防止空方块，可以显示一个默认占位符
+				const displayText = node.description || ('Step ' + node.index);
+							
+				nodeDiv.innerHTML = '<div class="node-desc">' + escapeHtml(displayText) + '</div>';
+							
+				if (node.isActive) {
+					nodeDiv.classList.add('active');
+				}
+
+				nodeDiv.onclick = () => {
+					vscode.postMessage({ 
+						type: 'executeCommand', 
+						commandId: 'refinement.switchGranularity', 
+						payload: { index: index } 
+					});
+				};
+
+				chainRoot.appendChild(nodeDiv);
+
+				if (index < nodes.length - 1) {
+					const arrowSpan = document.createElement('span');
+					arrowSpan.className = 'arrow';
+					arrowSpan.textContent = '➜';
+					chainRoot.appendChild(arrowSpan);
+				}
+			});
+		}
+
+        // 简单的 HTML 转义函数，防止描述中包含 < > 等特殊字符破坏布局
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>

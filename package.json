@@ -2,7 +2,7 @@
   "name": "2002",
   "publisher": "codesketcher",
   "displayName": "ChatVS",
-  "description": "a programme to help code via llm",
+  "description": "A program to help code via llm",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.91.0"
@@ -57,56 +57,27 @@
             "html"
           ],
           "markdownDescription": "Programming language used in the generated code"
+        },
+        "codeRefinement.azureOpenAI.apiKey": {
+          "type": "string",
+          "description": "Azure OpenAI API Key",
+          "markdownDescription": "你的 [Azure OpenAI API Key](https://platform.openai.com/api-keys)"
+        },
+        "codeRefinement.azureOpenAI.endpoint": {
+          "type": "string",
+          "description": "Azure OpenAI 端点",
+          "markdownDescription": "你的 Azure OpenAI 端点地址，格式如: `https://xxx.openai.azure.com/`"
         }
       }
     },
     "commands": [
       {
-        "command": "CodeToolBox.generateNote",
-        "title": "Generate",
-        "category": "ScribeAI Comments"
-      },
-      {
-        "command": "CodeToolBox.chatGPTView",
-        "title": "chatGPT对话框"
-      },
-      {
-        "command": "askAI",
-        "title": "提问"
-      },
-      {
         "command": "CodeToolBox.openChatGPTView",
         "title": "打开chatGPT对话框"
       },
       {
-        "command": "CodeToolBox.hideChatGPTView",
-        "title": "关闭chatGPT对话框",
-        "icon": "$(close)"
-      },
-      {
-        "command": "CodeToolBox.openSetting",
-        "title": "设置",
-        "icon": "$(gear)"
-      },
-      {
-        "command": "CodeToolBox.abilities",
-        "title": "new pseudocode(Disabled)"
-      },
-      {
-        "command": "CodeToolBox.pseudocode",
-        "title": "new refinedpseudocode(Disabled)"
-      },
-      {
-        "command": "CodeToolBox.code",
-        "title": "generate code"
-      },
-      {
-        "command": "CodeToolBox.mergeall",
-        "title": "import all"
-      },
-      {
-        "command": "CodeToolBox.highlightNewContent",
-        "title": "Highlight New Content"
+        "command": "CodeToolBox.openSettings",
+        "title": "打开设置"
       },
       {
         "command": "CodeToolBox.switchDisplay",
@@ -117,8 +88,41 @@
         "title": "Confirm Line"
       },
       {
-        "command": "CodeToolBox.divideBlocks",
-        "title": "new moudle"
+        "command": "refinement.globalRefine",
+        "title": "全局精化"
+      },
+      {
+        "command": "refinement.localRefine",
+        "title": "局部精化"
+      },
+      {
+        "command": "refinement.generateCode",
+        "title": "生成代码"
+      },
+      {
+        "command": "refinement.rollback",
+        "title": "回退粒度"
+      },
+      {
+        "command": "CodeToolBox.createNonLeafNode",
+        "title": "创建非叶子节点",
+        "icon": "images/add-branch.svg"
+      },
+      {
+        "command": "CodeToolBox.createLeafNode",
+        "title": "创建叶子节点",
+        "icon": "images/add-leaf.svg"
+      },
+      {
+        "command": "CodeToolBox.deleteNode",
+        "title": "Delete"
+      }
+    ],
+    "keybindings": [
+      {
+        "key": "alt+c",
+        "command": "CodeToolBox.confirmLine",
+        "when": "editorTextFocus"
       }
     ],
     "viewsContainers": {
@@ -129,31 +133,41 @@
           "icon": "images/tool.png",
           "initialWidth": 10000
         }
+      ],
+      "panel": [
+        {
+          "id": "RefinementContainer",
+          "title": "refinement console",
+          "icon": "$(layout-panel-right)"
+        }
       ]
     },
     "views": {
-      "CodeSketcher": [
+      "CodeToolBox": [
         {
           "id": "CodeToolBox.welcome",
           "name": "welcome",
           "when": "!CodeToolBox.chatGPTView"
         },
         {
-          "type": "webview",
           "id": "CodeToolBox.chatGPTView",
           "name": "CodeSketcher",
           "when": "CodeToolBox.chatGPTView"
-        },
+        }
+      ],
+      "RefinementContainer": [
         {
-          "id": "nodeDependencies",
-          "name": "Node Dependencies"
+          "type": "webview",
+          "id": "GranularityView",
+          "name": "Granularity panel",
+          "visibility": "visible"
         }
       ]
     },
     "viewsWelcome": [
       {
         "view": "CodeToolBox.welcome",
-        "contents": "[打开CodeSketcher对话框](command:CodeToolBox.openChatGPTView)\n[设置](command:CodeToolBox.openSetting)"
+        "contents": "[打开CodeSketcher对话框](command:CodeToolBox.openChatGPTView)\n[设置](command:CodeToolBox.openSettings)"
       }
     ],
     "submenus": [
@@ -176,45 +190,25 @@
           "group": "navigation"
         }
       ],
-      "CodeToolBox.toolsMenu": [
-        {
-          "command": "CodeToolBox.abilities",
-          "enabled": false
-        },
-        {
-          "command": "CodeToolBox.pseudocode",
-          "when": "resourceLangId != plaintext"
-        },
-        {
-          "command": "CodeToolBox.divideBlocks",
-          "title": "Generate the pseudocode for the next level.(Disabled)"
-        },
-        {
-          "command": "CodeToolBox.code",
-          "when": "resourceLangId == plaintext"
-        },
-        {
-          "command": "CodeToolBox.mergeall",
-          "when": "resourceLangId == plaintext"
-        }
-      ],
+      "CodeToolBox.toolsMenu": [],
       "view/title": [
         {
-          "command": "CodeToolBox.hideChatGPTView",
+          "command": "CodeToolBox.createNonLeafNode",
           "when": "view == CodeToolBox.chatGPTView",
-          "group": "navigation@4"
+          "group": "navigation"
         },
         {
-          "command": "CodeToolBox.openSetting",
+          "command": "CodeToolBox.createLeafNode",
           "when": "view == CodeToolBox.chatGPTView",
-          "group": "navigation@3"
+          "group": "navigation"
         }
       ],
-      "comments/commentThread/context": [
+      "comments/commentThread/context": [],
+      "view/item/context": [
         {
-          "command": "CodeToolBox.generateNote",
-          "group": "inline@1",
-          "when": "commentController == comment-scribeai"
+          "command": "CodeToolBox.deleteNode",
+          "when": "view == CodeToolBox.chatGPTView && (viewItem == leafNode || viewItem == nonLeafNode)",
+          "group": "navigation"
         }
       ]
     }
@@ -250,7 +244,6 @@
     "openai": "^4.61.0",
     "react": "^18.3.1",
     "vsce": "^2.15.0",
-    "vscode": "^1.1.37",
     "vscode-webview-tool": "^1.0.4",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0",
