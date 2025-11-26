@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 
 import { registerCreateSetting } from "./setting/setting";
-import { remake } from './makenew/remake';
+import { remake } from './make-new/remake';
 import { confirm } from './confirm/confirm';
 // import { startLogging } from './log/log';
-import { registerWebviewForGranularityPanel, currentRecord } from "./createview/create-granularity-panel";
+import { registerWebviewForGranularityPanel, currentRecord } from "./granularity-view/create-granularity-panel";
 import { createTreeView } from './tree-view/create-tree-view';
 
 interface Project {

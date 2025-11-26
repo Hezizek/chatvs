@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { remake } from '../makenew/remake';
+import { remake } from '../make-new/remake';
 
 // --- 类型定义 ---
 

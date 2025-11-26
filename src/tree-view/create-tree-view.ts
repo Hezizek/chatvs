@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as path from 'path'
-import { disposeCurrentRecordAndCloseWebview, openGranularityWebview } from '../createview/create-granularity-panel'
+import { disposeCurrentRecordAndCloseWebview, openGranularityWebview } from '../granularity-view/create-granularity-panel'
 
 // Set a global tree data provider.
 let fileTreeProvider: FileTreeProvider | null = null
