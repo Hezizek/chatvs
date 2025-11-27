@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as path from 'path'
 import { disposeCurrentRecordAndCloseWebview, openGranularityWebview } from '../granularity-view/create-granularity-panel'
+import { GranularityRecord } from '../granularity-view/granularity-record'
 
 // Set a global tree data provider.
 let fileTreeProvider: FileTreeProvider | null = null
@@ -15,7 +16,7 @@ export class FileNode extends vscode.TreeItem {
     ) {
         super(label, collapsibleState)
         this.contextValue = collapsibleState === vscode.TreeItemCollapsibleState.None ? 'leafNode' : 'nonLeafNode'
-        
+
         // Set icon based on node type.
         const iconName = this.collapsibleState === vscode.TreeItemCollapsibleState.None ? 'chrome-maximize' : 'type-hierarchy-sub'
         this.iconPath = new vscode.ThemeIcon(
@@ -29,7 +30,7 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileNode> {
     private _onDidChangeTreeData: vscode.EventEmitter<FileNode | undefined> = new vscode.EventEmitter<FileNode | undefined>()
     readonly onDidChangeTreeData: vscode.Event<FileNode | undefined> = this._onDidChangeTreeData.event
 
-    constructor(public treeData: FileNode[]) {}
+    constructor(public treeData: FileNode[]) { }
 
     getTreeItem(element: FileNode): vscode.TreeItem {
         return element
@@ -50,12 +51,16 @@ export class FileTreeProvider implements vscode.TreeDataProvider<FileNode> {
 }
 
 export async function createTreeView(context: vscode.ExtensionContext) {
-    
+
     context.subscriptions.push(
         vscode.commands.registerCommand("CodeToolBox.openChatGPTView", async () => {
             openChatGPTView(context)
         })
-    )    
+    )
+}
+export async function revealTreeItem(nodePath: string) {
+    const dir=path.dirname(nodePath)
+    openGranularityWebview(dir)
 }
 
 const openChatGPTView = (context: vscode.ExtensionContext) => {
@@ -63,9 +68,9 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
         fileTreeProvider = new FileTreeProvider([])
 
         const treeView = vscode.window.createTreeView('CodeToolBox.chatGPTView', {
-            treeDataProvider: fileTreeProvider 
+            treeDataProvider: fileTreeProvider
         })
-        
+
         context.subscriptions.push(treeView)
 
         // Listen to node selection.
@@ -128,7 +133,7 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                 createNode()
             })
         )
-        
+
         context.subscriptions.push(
             vscode.commands.registerCommand('CodeToolBox.createNonLeafNode', () => {
                 createNode(true)
@@ -144,14 +149,14 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     return
                 }
 
-                const targetPath =  selected ? selected.absolutePath : vscode.workspace.getConfiguration('ai').get<string>('path')!
+                const targetPath = selected ? selected.absolutePath : vscode.workspace.getConfiguration('ai').get<string>('path')!
                 const typeLabel = nonLeaf ? "non-leaf" : "leaf"
                 const defaultName = nonLeaf ? "New Non-leaf Node" : "New Leaf Node"
 
                 const newNodeName = await vscode.window.showInputBox({
                     prompt: `Enter new ${typeLabel} node name`,
                     value: defaultName
-                })                
+                })
 
                 // User cancel.
                 if (!newNodeName) return
@@ -166,6 +171,19 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     }
                     fs.mkdirSync(newNodePath, { recursive: true })
                     fs.writeFileSync(filePath, "Empty node content.")
+                    try {
+                        // 实例化一个临时的 Record 对象指向新目录
+                        const record = new GranularityRecord(newNodePath);
+
+                        // 添加第一条记录：指向刚创建的 content.txt
+                        const index = record.getCurrentIndex();
+                        record.addRecord(filePath, '粒度' + (index + 1), true);
+
+                        // 保存到 node.json 并释放
+                        record.dispose();
+                    } catch (e) {
+                        console.error('初始化粒度记录失败:', e);
+                    }
                 } catch (error) {
                     console.error(`Error occurred while creating file "${filePath}".`, error)
                     return
@@ -188,7 +206,7 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                 fileTreeProvider.refresh(undefined)
             }
         }
-        
+
         vscode.commands.executeCommand("setContext", "CodeToolBox.chatGPTView", true)
     })
 }

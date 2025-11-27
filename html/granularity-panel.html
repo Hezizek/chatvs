@@ -11,7 +11,21 @@
         <button onclick="sendCommand('refinement.globalRefine')">全局精化</button>
         <button onclick="sendCommand('refinement.localRefine')">局部精化</button>
         <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
-        <button onclick="sendCommand('refinement.generateCode')">生成代码</button>
+        <button onclick="sendGenerateCommand()">生成代码</button>
+        <select id="language-select" style="padding: 5px; border-radius: 2px; border: 1px solid var(--vscode-dropdown-border); background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground);">
+            <option value="python">Python</option>
+            <option value="java">Java</option>
+            <option value="c++">C++</option>
+            <option value="c">C</option>
+            <option value="javascript">JavaScript</option>
+            <option value="typescript">TypeScript</option>
+            <option value="html">HTML</option>
+        </select>
+    </div>
+
+    <div class="module-container">
+        <div class="chain-title">模块顺序</div>
+        <div class="module-chain" id="module-chain-root"></div>
     </div>
 
     <div class="granularity-container">
@@ -23,16 +37,76 @@
         const vscode = acquireVsCodeApi();
         const chainRoot = document.getElementById('chain-root');
 
+        // [新增] 获取模块容器 DOM
+        const moduleChainRoot = document.getElementById('module-chain-root');
+
         function sendCommand(commandId) {
             vscode.postMessage({ type: 'executeCommand', commandId: commandId });
         }
 
+        // 专门用于发送生成代码命令的函数，携带语言参数
+        function sendGenerateCommand() {
+            const select = document.getElementById('language-select');
+            const language = select.value;
+            vscode.postMessage({ 
+                type: 'executeCommand', 
+                commandId: 'refinement.generateCode', 
+                payload: { language: language } 
+            });
+        }
+
         window.addEventListener('message', event => {
             const message = event.data;
-            if (message.type === 'updateChain') {
-                renderChain(message.data);
+            // [修改] 支持 updateView 消息
+            if (message.type === 'updateView') {
+                const { nodes, moduleSequence, currentModule } = message.data;
+                renderChain(nodes); // 渲染粒度历史
+                renderModuleChain(moduleSequence, currentModule); // 渲染模块顺序
             }
         });
+        // [新增] 渲染模块顺序链表的函数
+        function renderModuleChain(sequence, currentModule) {
+            moduleChainRoot.innerHTML = '';
+            
+            if (!sequence || sequence.length === 0) {
+                moduleChainRoot.innerHTML = '<span style="color:var(--vscode-descriptionForeground); font-size:0.9em;">(无 seq.json 配置)</span>';
+                return;
+            }
+
+            sequence.forEach((moduleName, index) => {
+                const nodeDiv = document.createElement('div');
+                nodeDiv.className = 'module-node'; // 使用新的 CSS 类
+                
+                nodeDiv.innerHTML = `<div class="node-desc">${escapeHtml(moduleName)}</div>`;
+                
+                // 高亮当前模块
+                if (moduleName === currentModule) {
+                    nodeDiv.classList.add('active');
+                }
+
+                // 点击跳转
+                nodeDiv.onclick = () => {
+                    // 如果点击的不是当前模块，则发送跳转命令
+                    if (moduleName !== currentModule) {
+                        vscode.postMessage({ 
+                            type: 'executeCommand', 
+                            commandId: 'refinement.switchModule', 
+                            payload: { moduleName: moduleName } 
+                        });
+                    }
+                };
+
+                moduleChainRoot.appendChild(nodeDiv);
+
+                // 添加箭头
+                if (index < sequence.length - 1) {
+                    const arrowSpan = document.createElement('span');
+                    arrowSpan.className = 'arrow';
+                    arrowSpan.textContent = '➜';
+                    moduleChainRoot.appendChild(arrowSpan);
+                }
+            });
+        }
 
         // [核心修改] 渲染函数
         // src/extension.ts 中的 renderChain 函数
@@ -87,6 +161,7 @@
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
         }
+        vscode.postMessage({ type: 'webviewReady' });
     </script>
 </body>
 </html>
