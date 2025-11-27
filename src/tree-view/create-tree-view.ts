@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as path from 'path'
 import { disposeCurrentRecordAndCloseWebview, openGranularityWebview } from '../granularity-view/create-granularity-panel'
+import { GranularityRecord } from '../granularity-view/granularity-record'
 
 // Set a global tree data provider.
 let fileTreeProvider: FileTreeProvider | null = null
@@ -166,6 +167,19 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     }
                     fs.mkdirSync(newNodePath, { recursive: true })
                     fs.writeFileSync(filePath, "Empty node content.")
+                    try {
+                        // 实例化一个临时的 Record 对象指向新目录
+                        const record = new GranularityRecord(newNodePath);
+                        
+                        // 添加第一条记录：指向刚创建的 content.txt
+
+                        record.addRecord(filePath, '初始描述', true);
+                        
+                        // 保存到 node.json 并释放
+                        record.dispose();
+                    } catch (e) {
+                        console.error('初始化粒度记录失败:', e);
+                    }
                 } catch (error) {
                     console.error(`Error occurred while creating file "${filePath}".`, error)
                     return

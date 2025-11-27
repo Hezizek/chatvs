@@ -47,6 +47,12 @@ class GranularityViewProvider implements vscode.WebviewViewProvider {
                 case 'executeCommand':
                     vscode.commands.executeCommand(data.commandId, data.payload)
                     return
+                case 'webviewReady':
+                    if (currentRecord) {
+                        // 收到就绪信号后，强制重新发送一次当前数据
+                        currentRecord.fireUpdate()
+                    }
+                    return
             }
         })
     }
