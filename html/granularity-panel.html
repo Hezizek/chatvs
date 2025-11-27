@@ -11,7 +11,16 @@
         <button onclick="sendCommand('refinement.globalRefine')">全局精化</button>
         <button onclick="sendCommand('refinement.localRefine')">局部精化</button>
         <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
-        <button onclick="sendCommand('refinement.generateCode')">生成代码</button>
+        <button onclick="sendGenerateCommand()">生成代码</button>
+        <select id="language-select" style="padding: 5px; border-radius: 2px; border: 1px solid var(--vscode-dropdown-border); background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground);">
+            <option value="python">Python</option>
+            <option value="java">Java</option>
+            <option value="c++">C++</option>
+            <option value="c">C</option>
+            <option value="javascript">JavaScript</option>
+            <option value="typescript">TypeScript</option>
+            <option value="html">HTML</option>
+        </select>
     </div>
 
     <div class="granularity-container">
@@ -25,6 +34,17 @@
 
         function sendCommand(commandId) {
             vscode.postMessage({ type: 'executeCommand', commandId: commandId });
+        }
+
+        // 专门用于发送生成代码命令的函数，携带语言参数
+        function sendGenerateCommand() {
+            const select = document.getElementById('language-select');
+            const language = select.value;
+            vscode.postMessage({ 
+                type: 'executeCommand', 
+                commandId: 'refinement.generateCode', 
+                payload: { language: language } 
+            });
         }
 
         window.addEventListener('message', event => {

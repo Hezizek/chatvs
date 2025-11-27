@@ -160,18 +160,18 @@ export function getLocalRefinePrompt(
 /**
  * 代码生成提示词 - 从伪代码生成 Python 代码
  */
-export function getGenerateCodePrompt(fileContent: string, lastGranularity: string): { system: string; user: string } {
+export function getGenerateCodePrompt(fileContent: string, lastGranularity: string, language: string = 'python'): { system: string; user: string } {
     return {
-        system: `你是一个专业的 Python 代码生成专家。你的任务是根据提供的伪代码生成可运行的 Python 代码。
+        system: `你是一个专业的 ${language} 代码生成专家。你的任务是根据提供的伪代码生成可运行的 ${language} 代码。
 
 代码生成要求：
-1. 根据伪代码的完整逻辑生成可运行的 Python 代码
-2. 使用适当的 Python 数据结构和库
+1. 根据伪代码的完整逻辑生成可运行的 ${language} 代码
+2. 使用适当的 ${language} 数据结构和库
 3. 添加必要的错误处理和边界检查
-4. 遵循 PEP 8 代码规范
+4. 遵循该语言的最佳实践和代码规范
 5. 添加清晰的注释对应伪代码步骤
 
-重要：请直接返回生成的完整、可运行的 Python 代码，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`python 等），不要添加任何额外的格式化标记，只返回纯 Python 代码。`,
-        user: `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n请根据上述伪代码的整体逻辑生成完整、可运行的 Python 代码。代码应完全对应伪代码的逻辑流程。\n\n请直接返回 Python 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`
+重要：请直接返回生成的完整、可运行的 ${language} 代码，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`${language} 等），不要添加任何额外的格式化标记，只返回纯代码。`,
+        user: `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。代码应完全对应伪代码的逻辑流程。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`
     };
 }

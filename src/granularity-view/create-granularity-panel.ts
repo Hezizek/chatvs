@@ -3,6 +3,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as openaiHelper from '../openai/openai-helper'
 import { GranularityNode, GranularityRecord } from './granularity-record'
+import { getSrcFileSuffix } from '../tools/lang-util'
 
 export let currentRecord: GranularityRecord | null = null
 
@@ -321,7 +322,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
 			    currentRecord.backTo(currentIndex)
 
-			    vscode.window.showInformationMessage(`已回退至粒度 ${currentIndex + 1}，后续粒度已丢弃。`)
+			    vscode.window.showInformationMessage(`已回退至粒度 ${currentIndex}，后续粒度已丢弃。`)
             }
 		})
 	)
@@ -335,26 +336,32 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 			}
             const targetDir = path.dirname(editor.document.fileName);
 
-			vscode.window.showInformationMessage('正在生成代码，请稍候...')
+			// [新增] 获取用户选择的语言，默认为 python
+            const language = payload && payload.language ? payload.language : 'python';
+            // [新增] 获取对应的后缀名
+            const fileSuffix = getSrcFileSuffix(language) || '.txt';
+
+			vscode.window.showInformationMessage(`正在生成 ${language} 代码，请稍候...`)
 
 			try {
 				const fileContent = editor.document.getText()
 				const currentNode = currentRecord!.getCurrentNode()
 				const lastGranularity = currentNode ? currentNode.description : '';
 
-				const prompt = openaiHelper.getGenerateCodePrompt(fileContent, lastGranularity);
+                // [修改] 传入 language 参数
+				const prompt = openaiHelper.getGenerateCodePrompt(fileContent, lastGranularity, language);
 				
 				const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user);
 				
 				const generatedCode = cleanLLMResponse(result);
 
 				const timestamp = Date.now();
-				const generatedFilePath = path.join(targetDir, `generated_${timestamp}.py`)
+                // [修改] 使用动态后缀名
+				const generatedFilePath = path.join(targetDir, `generated_${timestamp}${fileSuffix}`)
 
 				if (!fs.existsSync(targetDir)) {
 					fs.mkdirSync(targetDir, { recursive: true })
 				}
-
 				fs.writeFileSync(generatedFilePath, generatedCode, 'utf8')
 
 				const doc = await vscode.workspace.openTextDocument(generatedFilePath)
