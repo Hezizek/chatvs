@@ -4,6 +4,7 @@ import * as path from 'path'
 import * as openaiHelper from '../openai/openai-helper'
 import { GranularityNode, GranularityRecord } from './granularity-record'
 import { getSrcFileSuffix } from '../tools/lang-util'
+import { revealTreeItem } from '../tree-view/create-tree-view'
 
 export let currentRecord: GranularityRecord | null = null
 
@@ -43,9 +44,33 @@ class GranularityViewProvider implements vscode.WebviewViewProvider {
         }
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview)
-        webviewView.webview.onDidReceiveMessage(data => {
+        webviewView.webview.onDidReceiveMessage(async data => {
             switch (data.type) {
                 case 'executeCommand':
+                    if (data.commandId === 'refinement.switchModule') {
+                        const moduleName = data.payload.moduleName;
+                        const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path');
+                        
+                        if (aiPath && moduleName) {
+                            // 假设模块入口文件是 content.txt
+                            const moduleContentPath = path.join(aiPath, moduleName, 'content.txt');
+                            
+                            if (fs.existsSync(moduleContentPath)) {
+                                try {
+                                    const doc = await vscode.workspace.openTextDocument(moduleContentPath);
+                                    await vscode.window.showTextDocument(doc);
+                                    // 打开文档会自动触发 tree-view 的 selection 监听，从而更新 webview
+
+                                    revealTreeItem(moduleContentPath);
+                                } catch (e) {
+                                    vscode.window.showErrorMessage(`无法打开模块 ${moduleName}: ${e}`);
+                                }
+                            } else {
+                                vscode.window.showWarningMessage(`未找到模块文件: ${moduleContentPath}`);
+                            }
+                        }
+                        return;
+                    }
                     vscode.commands.executeCommand(data.commandId, data.payload)
                     return
                 case 'webviewReady':
@@ -313,20 +338,75 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 		vscode.commands.registerCommand('refinement.rollback', async () => {
             
 			if (currentRecord) {
+                // 1. 获取当前索引
                 const currentIndex = currentRecord.getCurrentIndex()
 
-			    if (currentIndex === -1) {
-				    vscode.window.showWarningMessage('当前没有粒度历史，无法回退。')
+			    if (currentIndex <= 0) {
+				    vscode.window.showWarningMessage('已经是初始粒度，无法继续回退。')
 				    return
 			    }
 
-			    currentRecord.backTo(currentIndex)
+                // 2. [修改] 局部回退：回退到上一个状态 (currentIndex - 1)
+                // 原有逻辑是 backTo(currentIndex)，如果是最后一个节点则没有任何效果，通常回退意味着撤销最近一步
+			    currentRecord.backTo(currentIndex )
+			    vscode.window.showInformationMessage(`当前模块已回退至粒度 ${currentIndex}。`)
 
-			    vscode.window.showInformationMessage(`已回退至粒度 ${currentIndex}，后续粒度已丢弃。`)
+                // 3. [新增] 级联重置：丢弃后续模块的历史
+                const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path');
+                const rootPath = currentRecord.getRootPath();
+                
+                if (aiPath) {
+                    try {
+                        // 计算当前模块的相对路径名称 (匹配 seq.json)
+                        const relativePath = path.relative(aiPath, rootPath);
+                        const currentModuleName = relativePath.split(path.sep).join('/');
+                        
+                        // 获取模块顺序
+                        const sequence = getModuleSequence();
+                        const seqIndex = sequence.indexOf(currentModuleName);
+
+                        // 如果当前模块在序列中，且不是最后一个
+                        if (seqIndex !== -1 && seqIndex < sequence.length - 1) {
+                            
+                            // 获取所有排在后面的模块
+                            const laterModules = sequence.slice(seqIndex + 1);
+                            
+                            // 遍历并重置
+                            for (const moduleName of laterModules) {
+                                const moduleFullPath = path.join(aiPath, moduleName);
+                                const jsonPath = path.join(moduleFullPath, 'node.json');
+
+                                // 只有当该模块有历史记录时才处理
+                                if (fs.existsSync(jsonPath)) {
+                                    try {
+                                        // 实例化一个临时的 Record 管理器
+                                        const tempRecord = new GranularityRecord(moduleFullPath);
+                                        
+                                        // 【核心操作】强制回退到索引 0 (只保留初始描述 content.txt)
+                                        // 这会自动删除该模块下生成的代码、伪代码文件
+                                        tempRecord.backTo(0);
+                                        
+                                        // 保存更改 (写入 node.json)
+                                        tempRecord.dispose();
+                                        
+                                        console.log(`[Cascade Reset] 已重置模块: ${moduleName}`);
+                                    } catch (e) {
+                                        console.error(`重置模块 ${moduleName} 失败:`, e);
+                                    }
+                                }
+                            }
+                            
+                            vscode.window.showInformationMessage(`已级联重置后续 ${laterModules.length} 个模块的历史。`);
+                        }
+
+                    } catch (error) {
+                        console.error('级联重置失败:', error);
+                    }
+                }
             }
 		})
 	)
-
+    
     context.subscriptions.push(
 		vscode.commands.registerCommand('refinement.generateCode', async (payload) => {
 			const editor = vscode.window.activeTextEditor
@@ -395,9 +475,30 @@ export function openGranularityWebview(rootPath: string) {
     currentRecord = new GranularityRecord(rootPath)
     currentRecord.onDidChange(async ( nodes: GranularityNode[] ) => {
         // Inform the webview to update UI.
+        // [新增] 获取当前模块信息
+        const sequence = getModuleSequence();
+        const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path');
+        let currentModuleName = ''
+        if (aiPath) {
+            // 1. 计算相对路径 (例如: from /root to /root/123/456 -> 123/456)
+            const relativePath = path.relative(aiPath, rootPath);
+            
+            // 2. [关键] 统一路径分隔符为 '/'。
+            // 即使在 Windows 上 path.relative 可能返回 '123\456'，
+            // 但 seq.json 通常是 '123/456'。前端比较需要完全一致。
+            currentModuleName = relativePath.split(path.sep).join('/');
+        } else {
+            currentModuleName = path.basename(rootPath); // 兜底
+        }
+
+        // [修改] 发送的数据类型改为 'updateView'，并包含更多信息
         GranularityViewProvider.postMessage({
-            type: 'updateChain',
-            data: nodes
+            type: 'updateView', 
+            data: {
+                nodes: nodes,
+                moduleSequence: sequence,
+                currentModule: currentModuleName
+            }
         })
 
         // Open content for the active node if it exists.
@@ -489,4 +590,21 @@ function getHumanJsonPath(fileName: string): string {
 interface LineData {
     type: number; // 0: AI, 1: Human
     content: string;
+}
+
+function getModuleSequence(): string[] {
+    const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path');
+    if (!aiPath) return [];
+    
+    // 假设 seq.json 位于插件目录下
+    const seqPath = '/Users/kai/code/vscode—plug-in/chatvs/seq.json';
+    if (fs.existsSync(seqPath)) {
+        try {
+            const content = fs.readFileSync(seqPath, 'utf8');
+            return JSON.parse(content); // 期望格式 ["ModuleA", "ModuleB"]
+        } catch (e) {
+            console.error('读取 seq.json 失败:', e);
+        }
+    }
+    return [];
 }
