@@ -83,10 +83,11 @@ class GranularityViewProvider implements vscode.WebviewViewProvider {
     }
 }
 // 增加一个辅助函数，用于处理“后台”更新
-function updateRecordInBackground(rootPath: string, filePath: string, description: string,highlightRange?: { start: number, end: number }) {
+function updateRecordInBackground(rootPath: string, filePath: string,highlightRange?: { start: number, end: number }) {
     // 创建一个临时的 Record 实例，只为了读取-更新-保存 JSON
     const tempRecord = new GranularityRecord(rootPath);
-    tempRecord.addRecord(filePath, description,false,highlightRange);
+    const index=tempRecord.getCurrentIndex();
+    tempRecord.addRecord(filePath, '粒度'+(index+1), false, highlightRange);
     // 调用 dispose 强制写入 node.json
     tempRecord.dispose();
 }   
@@ -151,10 +152,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 // 注意：你需要给 GranularityRecord 加一个 getter 来获取 rootPath，或者直接访问 public 属性
                 if (currentRecord && isCurrentRecordTarget(targetDir)) {
                     // 场景A：用户没切走，直接更新 UI
-                    currentRecord.addRecord(refinedFilePath, '全局精化');
+                    const index=currentRecord.getCurrentIndex();
+                    currentRecord.addRecord(refinedFilePath, '粒度'+(index+1));
                 } else {
-                    // 场景B：用户切走了，我们在后台更新 node.json，不打扰前台
-                    updateRecordInBackground(targetDir, refinedFilePath, '全局精化');
+                    // 场景B：用户切走了，我们在后台更新 node.json，不打扰前台，描述：第 index 粒度全局精化
+                    updateRecordInBackground(targetDir, refinedFilePath);
                     console.log(`后台更新了 ${targetDir} 的粒度记录`);
                 }
 
@@ -292,10 +294,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
                 if (currentRecord && isCurrentRecordTarget(targetDir)) {
                     // 场景A：用户没切走，直接更新 UI
-                    currentRecord.addRecord(refinedFilePath, `局部精化 (行 ${startLine}-${endLine})`,true,highlightRange);
+                    const index=currentRecord.getCurrentIndex();
+                    currentRecord.addRecord(refinedFilePath, '粒度'+(index+1),true,highlightRange);
                 } else {
                     // 场景B：用户切走了，我们在后台更新 node.json，不打扰前台
-                    updateRecordInBackground(targetDir, refinedFilePath, `局部精化 (行 ${startLine}-${endLine})`,highlightRange);
+                    updateRecordInBackground(targetDir, refinedFilePath,highlightRange);
                     console.log(`后台更新了 ${targetDir} 的粒度记录`);
                 }
                 vscode.window.showInformationMessage(`局部精化完成，文件已保存: ${path.basename(refinedFilePath)}`)
@@ -358,9 +361,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One })
 
 				if (currentRecord && isCurrentRecordTarget(targetDir)) {
-                    currentRecord.addRecord(generatedFilePath, '代码生成');
+                    const index=currentRecord.getCurrentIndex();
+                    currentRecord.addRecord(generatedFilePath, '粒度'+(index+1));
                 } else {
-                    updateRecordInBackground(targetDir, generatedFilePath, '代码生成');
+                    
+                    updateRecordInBackground(targetDir, generatedFilePath );
                     console.log(`后台更新了 ${targetDir} 的粒度记录`);
                 }
 

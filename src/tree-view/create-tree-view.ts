@@ -172,8 +172,8 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                         const record = new GranularityRecord(newNodePath);
                         
                         // 添加第一条记录：指向刚创建的 content.txt
-
-                        record.addRecord(filePath, '初始描述', true);
+                        const index = record.getCurrentIndex();
+                        record.addRecord(filePath, '粒度'+(index+1), true);
                         
                         // 保存到 node.json 并释放
                         record.dispose();
