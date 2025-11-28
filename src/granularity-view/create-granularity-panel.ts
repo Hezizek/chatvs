@@ -4,7 +4,7 @@ import * as path from 'path'
 import * as openaiHelper from '../openai/openai-helper'
 import { GranularityNode, GranularityRecord } from './granularity-record'
 import { getSrcFileSuffix } from '../tools/lang-util'
-import { revealTreeItem } from '../tree-view/create-tree-view'
+import { revealTreeItem, setOnGoingModule, getModuleSequence } from '../tree-view/create-tree-view'
 import * as Diff from 'diff'
 
 export let currentRecord: GranularityRecord | null = null
@@ -50,36 +50,36 @@ class GranularityViewProvider implements vscode.WebviewViewProvider {
                 case 'executeCommand':
                     if (data.commandId === 'refinement.switchModule') {
                         const moduleName = data.payload.moduleName;
-                        const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path');
+                        const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path')
                         
                         if (aiPath && moduleName) {
                             // 假设模块入口文件是 content.txt
-                            const moduleContentPath = path.join(aiPath, moduleName, 'content.txt');
+                            const moduleContentPath = path.join(aiPath, moduleName, 'content.txt')
                             
                             if (fs.existsSync(moduleContentPath)) {
                                 try {
-                                    const doc = await vscode.workspace.openTextDocument(moduleContentPath);
-                                    await vscode.window.showTextDocument(doc);
+                                    const doc = await vscode.workspace.openTextDocument(moduleContentPath)
+                                    await vscode.window.showTextDocument(doc)
                                     // 打开文档会自动触发 tree-view 的 selection 监听，从而更新 webview
 
                                     revealTreeItem(moduleContentPath);
                                 } catch (e) {
-                                    vscode.window.showErrorMessage(`无法打开模块 ${moduleName}: ${e}`);
+                                    vscode.window.showErrorMessage(`无法打开模块 ${moduleName}: ${e}`)
                                 }
                             } else {
-                                vscode.window.showWarningMessage(`未找到模块文件: ${moduleContentPath}`);
+                                vscode.window.showWarningMessage(`未找到模块文件: ${moduleContentPath}`)
                             }
                         }
                         return;
                     }
+
                     vscode.commands.executeCommand(data.commandId, data.payload)
                     return
+
                 case 'webviewReady':
                     if (currentRecord) {
-                        // 收到就绪信号后，强制重新发送一次当前数据
                         currentRecord.fireUpdate()
                     }
-                    return
             }
         })
     }
@@ -355,14 +355,14 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 // 1. 获取当前索引
                 const currentIndex = currentRecord.getCurrentIndex()
 
-			    if (currentIndex <= 0) {
-				    vscode.window.showWarningMessage('已经是初始粒度，无法继续回退。')
+			    if (currentIndex < 0) {
+				    vscode.window.showWarningMessage('您还没有选择要回退到的粒度。')
 				    return
 			    }
 
                 // 2. [修改] 局部回退：回退到上一个状态 (currentIndex - 1)
                 // 原有逻辑是 backTo(currentIndex)，如果是最后一个节点则没有任何效果，通常回退意味着撤销最近一步
-			    currentRecord.backTo(currentIndex )
+			    currentRecord.backTo(currentIndex)
 			    vscode.window.showInformationMessage(`当前模块已回退至粒度 ${currentIndex}。`)
 
                 // 3. [新增] 级联重置：丢弃后续模块的历史
@@ -375,9 +375,9 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         const relativePath = path.relative(aiPath, rootPath);
                         const currentModuleName = relativePath.split(path.sep).join('/');
                         
-                        // 获取模块顺序
+                        // 获取模块索引
                         const sequence = getModuleSequence();
-                        const seqIndex = sequence.indexOf(currentModuleName);
+                        const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName);
 
                         // 如果当前模块在序列中，且不是最后一个
                         if (seqIndex !== -1 && seqIndex < sequence.length - 1) {
@@ -387,7 +387,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                             
                             // 遍历并重置
                             for (const moduleName of laterModules) {
-                                const moduleFullPath = path.join(aiPath, moduleName);
+                                const moduleFullPath = path.join(aiPath, moduleName.relativePath);
                                 const jsonPath = path.join(moduleFullPath, 'node.json');
 
                                 // 只有当该模块有历史记录时才处理
@@ -412,6 +412,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                             
                             vscode.window.showInformationMessage(`已级联重置后续 ${laterModules.length} 个模块的历史。`);
                         }
+
+                        // Synchronize seq.json file.
+                        // Needs refactoring.
+                        setOnGoingModule(seqIndex);
+                        currentRecord.fireUpdate();
 
                     } catch (error) {
                         console.error('级联重置失败:', error);
@@ -459,10 +464,10 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				fs.writeFileSync(generatedFilePath, generatedCode, 'utf8')
 
 				const doc = await vscode.workspace.openTextDocument(generatedFilePath)
-				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One })
+				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
 
 				if (currentRecord && isCurrentRecordTarget(targetDir)) {
-                    const index=currentRecord.getCurrentIndex();
+                    const index = currentRecord.getCurrentIndex();
                     currentRecord.addRecord(generatedFilePath, '粒度'+(index+1));
                 } else {
                     
@@ -470,7 +475,20 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     console.log(`后台更新了 ${targetDir} 的粒度记录`);
                 }
 
-				vscode.window.showInformationMessage(`代码已生成，文件已保存: ${path.basename(generatedFilePath)}`)
+				vscode.window.showInformationMessage(`代码已生成，文件已保存: ${path.basename(generatedFilePath)}`);
+
+                // Synchronize seq.json file.
+                // Get index of current module.
+                // Needs refactoring.
+                const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path');
+                const rootPath = currentRecord!.getRootPath();
+                const relativePath = path.relative(aiPath!, rootPath);
+                const currentModuleName = relativePath.split(path.sep).join('/');
+                const sequence = getModuleSequence();
+                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName);
+                setOnGoingModule(seqIndex + 1);
+                currentRecord!.fireUpdate();
+
 			} catch (err) {
 				vscode.window.showErrorMessage(`代码生成失败: ${err}`)
             }
@@ -478,9 +496,8 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 	)
 }
 
-// Open a webview for a specific directory.
+ // Open the granularity webview for a leaf node.
 export function openGranularityWebview(rootPath: string) {
-
     // Save the current state of record.
     if (currentRecord) {
         currentRecord.dispose()
@@ -492,6 +509,7 @@ export function openGranularityWebview(rootPath: string) {
         // [新增] 获取当前模块信息
         const sequence = getModuleSequence();
         const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path');
+        const modName = path.basename(rootPath);
         let currentModuleName = ''
         if (aiPath) {
             // 1. 计算相对路径 (例如: from /root to /root/123/456 -> 123/456)
@@ -502,8 +520,12 @@ export function openGranularityWebview(rootPath: string) {
             // 但 seq.json 通常是 '123/456'。前端比较需要完全一致。
             currentModuleName = relativePath.split(path.sep).join('/');
         } else {
-            currentModuleName = path.basename(rootPath); // 兜底
+            currentModuleName = modName; // 兜底
         }
+
+        // 得到要打开模块的状态：completed/ongoing/pending
+        const targetMod = sequence.find(mod => path.basename(mod.relativePath) === modName);        
+        const status = targetMod!.status;
 
         // [修改] 发送的数据类型改为 'updateView'，并包含更多信息
         GranularityViewProvider.postMessage({
@@ -511,7 +533,8 @@ export function openGranularityWebview(rootPath: string) {
             data: {
                 nodes: nodes,
                 moduleSequence: sequence,
-                currentModule: currentModuleName
+                currentModule: currentModuleName,
+                moduleStatus: status
             }
         })
 
@@ -536,7 +559,7 @@ export function openGranularityWebview(rootPath: string) {
                     editor.setDecorations(refineHighlightType, rangesToDecorate);
                 } else {
                     // 如果没有高亮信息，清除之前的装饰（防止复用 editor 时残留）
-                    editor.setDecorations(refineHighlightType, []);
+                    editor.setDecorations(refineHighlightType, [])
                 }
                 if (rangesToDecorate.length > 0) {
                     editor.revealRange(rangesToDecorate[0], vscode.TextEditorRevealType.InCenterIfOutsideViewport);
@@ -608,21 +631,4 @@ function getHumanJsonPath(fileName: string): string {
 interface LineData {
     type: number; // 0: AI, 1: Human
     content: string;
-}
-
-function getModuleSequence(): string[] {
-    const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path');
-    if (!aiPath) return [];
-    
-    // 假设 seq.json 位于插件目录下
-    const seqPath = '/Users/kai/code/vscode—plug-in/chatvs/seq.json';
-    if (fs.existsSync(seqPath)) {
-        try {
-            const content = fs.readFileSync(seqPath, 'utf8');
-            return JSON.parse(content); // 期望格式 ["ModuleA", "ModuleB"]
-        } catch (e) {
-            console.error('读取 seq.json 失败:', e);
-        }
-    }
-    return [];
 }
