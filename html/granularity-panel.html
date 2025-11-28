@@ -7,20 +7,33 @@
     <title>粒度面板</title>
 </head>
 <body>
-    <div class="button-bar">
-        <button onclick="sendCommand('refinement.globalRefine')">全局精化</button>
-        <button onclick="sendCommand('refinement.localRefine')">局部精化</button>
-        <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
-        <button onclick="sendGenerateCommand()">生成代码</button>
-        <select id="language-select" style="padding: 5px; border-radius: 2px; border: 1px solid var(--vscode-dropdown-border); background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground);">
-            <option value="python">Python</option>
-            <option value="java">Java</option>
-            <option value="c++">C++</option>
-            <option value="c">C</option>
-            <option value="javascript">JavaScript</option>
-            <option value="typescript">TypeScript</option>
-            <option value="html">HTML</option>
-        </select>
+    <div id="button-bar-container">
+        <!-- Displayed for ongoing modules. -->
+        <div id="button-bar-ongoing" class="button-bar-ongoing">
+            <button onclick="sendCommand('refinement.globalRefine')">全局精化</button>
+            <button onclick="sendCommand('refinement.localRefine')">局部精化</button>
+            <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
+            <button onclick="sendGenerateCommand()">生成代码</button>
+            <select id="language-select" style="padding: 5px; border-radius: 2px; border: 1px solid var(--vscode-dropdown-border); background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground);">
+                <option value="python">Python</option>
+                <option value="java">Java</option>
+                <option value="c++">C++</option>
+                <option value="c">C</option>
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="html">HTML</option>
+            </select>
+        </div>
+
+        <!-- Displayed for completed modules. -->
+        <div id="button-bar-completed" class="button-bar-completed">
+            <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
+        </div>
+
+        <!-- Displayed for pending modules. -->
+        <div id="button-bar-pending" class="button-bar-pending">
+            Refinement panel is currently disabled.
+        </div>
     </div>
 
     <div class="module-container">
@@ -40,6 +53,11 @@
         // [新增] 获取模块容器 DOM
         const moduleChainRoot = document.getElementById('module-chain-root');
 
+        // [新增] 获取 button bar 容器 DOM 以控制显示
+        const buttonBarOngoing = document.getElementById('button-bar-ongoing');
+        const buttonBarCompleted = document.getElementById('button-bar-completed');
+        const buttonBarPending = document.getElementById('button-bar-pending');
+
         function sendCommand(commandId) {
             vscode.postMessage({ type: 'executeCommand', commandId: commandId });
         }
@@ -56,14 +74,19 @@
         }
 
         window.addEventListener('message', event => {
-            const message = event.data;
-            // [修改] 支持 updateView 消息
-            if (message.type === 'updateView') {
-                const { nodes, moduleSequence, currentModule } = message.data;
-                renderChain(nodes); // 渲染粒度历史
-                renderModuleChain(moduleSequence, currentModule); // 渲染模块顺序
+            const msg = event.data;
+            switch (msg.type) {
+                case 'updateView':
+                    const { nodes, moduleSequence, currentModule, moduleStatus } = msg.data;
+                    renderButtonBar(moduleStatus);                      // 根据模块状态判断是否允许用户进行精化
+                    renderChain(nodes);                                 // 渲染粒度历史
+                    renderModuleChain(moduleSequence, currentModule);   // 渲染模块顺序
+                    break;
+                default:
+                    console.error(`Invalid message type from backend: ${msg.type}`);
             }
         });
+
         // [新增] 渲染模块顺序链表的函数
         function renderModuleChain(sequence, currentModule) {
             moduleChainRoot.innerHTML = '';
@@ -151,6 +174,29 @@
 			});
 		}
 
+        function renderButtonBar(moduleStatus) {
+            switch (moduleStatus) {
+                case 'completed':
+                    buttonBarOngoing.style.display = 'none';
+                    buttonBarCompleted.style.display = 'flex';
+                    buttonBarPending.style.display = 'none';
+                    break;
+                case 'ongoing':
+                    buttonBarOngoing.style.display = 'flex';
+                    buttonBarCompleted.style.display = 'none';
+                    buttonBarPending.style.display = 'none';
+                    break;
+                case 'pending':
+                    buttonBarOngoing.style.display = 'none';
+                    buttonBarCompleted.style.display = 'none';
+                    buttonBarPending.style.display = 'block';
+                    buttonBarPending.textContent = 'Please refine preceding modules first.'
+                    break;
+                default:
+                    console.error(`Invalid module status from backend: ${moduleStatus}.`);
+            }
+        }
+
         // 简单的 HTML 转义函数，防止描述中包含 < > 等特殊字符破坏布局
         function escapeHtml(text) {
             if (!text) return '';
@@ -161,6 +207,7 @@
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
         }
+
         vscode.postMessage({ type: 'webviewReady' });
     </script>
 </body>

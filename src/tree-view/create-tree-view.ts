@@ -58,8 +58,9 @@ export async function createTreeView(context: vscode.ExtensionContext) {
         })
     )
 }
+
 export async function revealTreeItem(nodePath: string) {
-    const dir=path.dirname(nodePath)
+    const dir = path.dirname(nodePath)
     openGranularityWebview(dir)
 }
 
@@ -211,3 +212,54 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
     })
 }
 
+
+// The following functions are exposed to the granularity view module, for handling seq.json file for the whole project.
+
+interface LeafModule {
+    relativePath: string,
+    status: 'completed' | 'ongoing' | 'pending'
+}
+
+export function getModuleSequence(): LeafModule[] {
+    const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path')
+    if (!aiPath) return []
+    
+    // 假设 seq.json 位于插件目录下
+    const seqPath = 'D:/Directory/code/chatvs/chatvs/seq.json'
+    if (fs.existsSync(seqPath)) {
+        try {
+            const content = fs.readFileSync(seqPath, 'utf8')
+            return JSON.parse(content)
+        } catch (e) {
+            console.error('读取 seq.json 失败:', e)
+        }
+    }
+    return []
+}
+
+// Set the module of index id to 'ongoing'.
+// That also means setting the preceding modules to 'completed', the later sequence to 'pending'. 
+export function setOnGoingModule(id: number) {
+    const moduleSequence = getModuleSequence()
+
+    if (id < 0 || id >= moduleSequence.length) {
+        console.warn("Invalid module index: ", id)
+        return
+    }
+
+    for (let i = 0; i < moduleSequence.length; i++) {
+        if (i < id) {
+            moduleSequence[i].status = 'completed'
+        } else if (i === id) {
+            moduleSequence[i].status = 'ongoing'
+        } else {
+            moduleSequence[i].status = 'pending'
+        }
+    }
+
+    // Write the change back to json file.
+    const seqPath = 'D:/Directory/code/chatvs/chatvs/seq.json'
+    if (fs.existsSync(seqPath)) {
+        fs.writeFileSync(seqPath, JSON.stringify(moduleSequence))
+    }
+}

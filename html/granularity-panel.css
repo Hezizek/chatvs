@@ -1,18 +1,15 @@
-/* html/granularity-panel.css */
-
-/* --- 1. 全局布局框架 (核心修改) --- */
 html, body {
-    height: 100%;        /* 占满 Webview 高度 */
+    height: 100%;
     margin: 0;
     padding: 0;
     overflow: hidden;    /* 禁止整个页面滚动，为了固定头部 */
 }
 
 body {
-    display: flex;       /* 启用 Flex 布局 */
-    flex-direction: column; /* 垂直排列：上部是按钮，下部是内容 */
+    display: flex;
+    flex-direction: column;
     padding: 10px;
-    box-sizing: border-box; /* 让 padding 包含在 height 计算中 */
+    box-sizing: border-box;
     
     /* 基础字体与颜色 */
     color: var(--vscode-editor-foreground);
@@ -22,14 +19,20 @@ body {
     gap: 15px;
 }
 
-/* --- 2. 顶部按钮区域 (固定不动) --- */
-.button-bar {
+.button-bar-ongoing, .button-bar-completed {
     flex-shrink: 0;      /* 禁止被压缩，确保始终完整显示 */
-    display: flex;
+    display: none;
     gap: 10px;
     flex-wrap: wrap;     /* 按钮本身也可以换行，防止窗口太窄 */
     
-    /* 可选：加一个底部分割线，让分区更明显 */
+    /* 底部分割线 */
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.button-bar-pending {
+    padding: 8px;
+    color: var(--vscode-descriptionForeground);
     padding-bottom: 5px;
     border-bottom: 1px solid var(--vscode-panel-border);
 }
@@ -49,7 +52,6 @@ button:hover {
     background-color: var(--vscode-button-hoverBackground);
 }
 
-/* --- 3. 历史记录容器 (占据剩余空间 + 垂直滚动) --- */
 .granularity-container {
     flex: 1;             /* 霸占剩余的所有垂直空间 */
     overflow-y: auto;    /* 关键：内容超出时，只在这个区域内垂直滚动 */
@@ -68,7 +70,6 @@ button:hover {
     flex-shrink: 0;
 }
 
-/* --- 4. 粒度链表 (自动换行) --- */
 .granularity-chain {
     display: flex;
     flex-wrap: wrap;     /* 关键：允许节点换行 */
@@ -78,7 +79,6 @@ button:hover {
     padding-bottom: 20px; /* 底部留一点余量，防止滚动到底部太贴边 */
 }
 
-/* --- 5. 节点样式 (保持不变) --- */
 .granularity-node {
     width: 120px;              
     height: 40px;              
