@@ -4,8 +4,8 @@ import * as path from 'path'
 import * as openaiHelper from '../openai/openai-helper'
 import { GranularityNode, GranularityRecord } from './granularity-record'
 import { getSrcFileSuffix } from '../tools/lang-util'
-import { revealTreeItem, setOnGoingModule } from '../tree-view/create-tree-view'
-import { getModuleSequence } from '../tree-view/create-tree-view'
+import { revealTreeItem, setOnGoingModule, getModuleSequence } from '../tree-view/create-tree-view'
+import * as Diff from 'diff'
 
 export let currentRecord: GranularityRecord | null = null
 
@@ -110,11 +110,11 @@ class GranularityViewProvider implements vscode.WebviewViewProvider {
     }
 }
 // 增加一个辅助函数，用于处理“后台”更新
-function updateRecordInBackground(rootPath: string, filePath: string,highlightRange?: { start: number, end: number }) {
+function updateRecordInBackground(rootPath: string, filePath: string,highlightRanges?: { start: number, end: number }[]) {
     // 创建一个临时的 Record 实例，只为了读取-更新-保存 JSON
     const tempRecord = new GranularityRecord(rootPath);
     const index=tempRecord.getCurrentIndex();
-    tempRecord.addRecord(filePath, '粒度'+(index+1), false, highlightRange);
+    tempRecord.addRecord(filePath, '粒度'+(index+1), false, highlightRanges);
     // 调用 dispose 强制写入 node.json
     tempRecord.dispose();
 }   
@@ -224,21 +224,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const prompt = openaiHelper.getLocalRefinePrompt(fileContent, startLine, endLine, selectedCode)
 
                 const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
-                const improvedCode = cleanLLMResponse(result)
+                const refinedContent = cleanLLMResponse(result)
 
                 const timestamp = Date.now()
                 // 新文件的路径
                 const refinedFilePath = path.join(targetDir, `pseudotrans_local_refined_${timestamp}.txt`) // 或者 .pseudo
-
-                const beforeCode = fileContent.substring(0, editor.document.offsetAt(selection.start))
-                const afterCode = fileContent.substring(editor.document.offsetAt(selection.end))
-                const refinedContent = beforeCode + improvedCode + afterCode
-                
-                const startOffset = beforeCode.length;
-                // 结束偏移量 = 起始偏移量 + 新生成代码的长度
-                const endOffset = startOffset + improvedCode.length;
-                const highlightRange = { start: startOffset, end: endOffset };
-                
                 
                 if (!fs.existsSync(targetDir)) {
                     fs.mkdirSync(targetDir, { recursive: true })
@@ -255,61 +245,84 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         console.error('读取源文件状态失败', e);
                     }
                 }
+
+                const changes = Diff.diffLines(fileContent, refinedContent);
+
+                const highlightRanges: { start: number, end: number }[] = [];
+                let newStatus: LineData[] = [];
+
+                let currentOffset = 0; // 追踪新文件(refinedContent)的字符偏移量
+                let oldLineIndex = 0; // 追踪旧文件当前处理到的行号
+
+                changes.forEach(part => {
+                    // part.count 通常就是行数，但为了保险起见，如果 diff 库行为不一致，也可以用 split 计算
+                    // 只要文件不是特别巨大，split 开销可忽略
+                    // 这里直接用 part.count (diff 库标准属性)
+                    const lineCount = part.count || 0; 
+                    const textLength = part.value.length;
+
+                    if (part.added) {
+                        // 【新增/修改】：对应新文件内容，需要高亮，标记为 AI (0)
+                        
+                        // A. 记录高亮范围 (在新文件中的位置)
+                        highlightRanges.push({
+                            start: currentOffset,
+                            end: currentOffset + textLength
+                        });
+
+                        // B. 生成新状态 (全部设为 AI)
+                        for (let i = 0; i < lineCount; i++) {
+                            newStatus.push({ type: 0, content: '' });
+                        }
+
+                        // C. 推进新文件指针
+                        currentOffset += textLength;
+
+                    } else if (part.removed) {
+                        // 【删除】：对应旧文件内容，新文件中不存在
+                        
+                        // A. 只需要跳过旧文件的状态索引
+                        oldLineIndex += lineCount;
+                        
+                        // 不更新 currentOffset，也不推入 newStatus
+
+                    } else {
+                        // 【未变】：对应新文件内容，不需要高亮，继承旧状态
+                        
+                        // A. 继承状态
+                        for (let i = 0; i < lineCount; i++) {
+                            // 尝试从旧状态中获取
+                            if (oldLineIndex < oldStatus.length) {
+                                newStatus.push({ 
+                                    type: oldStatus[oldLineIndex].type, 
+                                    content: '' 
+                                });
+                            } else {
+                                // 兜底：如果越界，默认 AI
+                                newStatus.push({ type: 0, content: '' });
+                            }
+                            oldLineIndex++;
+                        }
+
+                        // B. 推进新文件指针
+                        currentOffset += textLength;
+                    }
+                });
                 
-                // 如果源 JSON 不存在或长度不对，可能需要兜底（这里简单处理：如果不够长，默认为 AI）
-                // 确保 oldStatus 长度足以覆盖整个文件，不够补 0
-                while (oldStatus.length < editor.document.lineCount) {
-                    oldStatus.push({ type: 0, content: '' });
+                // 3. 回填 content 内容 (为了 JSON 完整性)
+                const refinedLines = refinedContent.split(/\r?\n/);
+                // 处理 split 可能产生的末尾空串 (如果原文本以换行结尾)
+                if (refinedContent.endsWith('\n') && refinedLines.length > newStatus.length) {
+                    refinedLines.pop();
                 }
 
-                // B. 切分状态数组
-                // selection.start.line 是 0-based 索引
-                const startIndex = selection.start.line;
-                const endIndex = selection.end.line;
+                newStatus.forEach((status, index) => {
+                    if (index < refinedLines.length) {
+                        status.content = refinedLines[index];
+                    }
+                });
 
-                // 保留前半部分的状态 [0 ... startIndex-1]
-                // 注意：如果光标在行首，start.character 为 0。如果是在行中间，我们通常认为这行也被改了。
-                // 简单起见，我们认为 selection 覆盖的整行都被替换了。
-                const preStatus = oldStatus.slice(0, startIndex);
-                
-                // 保留后半部分的状态 [endIndex+1 ... end]
-                const postStatus = oldStatus.slice(endIndex + 1);
-
-                // C. 生成中间新代码的状态
-                // 将生成的 improvedCode 按行分割
-                // 注意处理换行符，统一为数组
-                const improvedLines = improvedCode.split(/\r?\n/);
-                const middleStatus: LineData[] = improvedLines.map(line => ({
-                    type: 0, // 新生成的标记为 AI (问号)
-                    content: line // 记录内容，方便后续 confirm.ts 校验
-                }));
-
-                // 更新前半部分和后半部分的 content (虽然状态保留，但为了 confirm.ts 的校验，最好更新一下 content)
-                // 这里其实比较难精准更新 content，因为 beforeCode 和 afterCode 是字符串。
-                // 但 confirm.ts 主要依赖 type。如果 content 对不上，load() 会重置为 0。
-                // 技巧：我们在写入 JSON 时，直接用新生成的文本内容去更新 preStatus 和 postStatus 的 content 字段
-                
-                const beforeLinesContent = beforeCode.split(/\r?\n/);
-                // split 会产生最后一个空串如果结尾有换行，需要小心处理
-                if (beforeCode.endsWith('\n')) beforeLinesContent.pop(); 
-
-                const afterLinesContent = afterCode.split(/\r?\n/);
-                 // 同上处理头部
-                if (afterCode.startsWith('\n')) afterLinesContent.shift();
-
-                // 修正：直接基于 refinedContent 重新构建整个 JSON 结构最稳妥
-                // 但我们需要保留 type。
-                // 重新组合状态：
-                const newStatus: LineData[] = [
-                    ...preStatus, 
-                    ...middleStatus, 
-                    ...postStatus
-                ];
-
-                // D. 写入新文件的 JSON
-                // 1. 获取新文件的 JSON 路径
-                // 注意：这里生成的文件名是 .txt 结尾，所以根据你的 getHumanJsonPath 逻辑，它会生成 _py_human.json
-                // 如果你想生成 .pseudo 文件，请把上面的 refinedFilePath 后缀改为 .pseudo
+                // 4. 写入新 JSON
                 const newJsonPath = getHumanJsonPath(refinedFilePath);
 
                 // 2. 写入
@@ -322,10 +335,10 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 if (currentRecord && isCurrentRecordTarget(targetDir)) {
                     // 场景A：用户没切走，直接更新 UI
                     const index=currentRecord.getCurrentIndex();
-                    currentRecord.addRecord(refinedFilePath, '粒度'+(index+1),true,highlightRange);
+                    currentRecord.addRecord(refinedFilePath, '粒度'+(index+1),true,highlightRanges);
                 } else {
                     // 场景B：用户切走了，我们在后台更新 node.json，不打扰前台
-                    updateRecordInBackground(targetDir, refinedFilePath,highlightRange);
+                    updateRecordInBackground(targetDir, refinedFilePath,highlightRanges);
                     console.log(`后台更新了 ${targetDir} 的粒度记录`);
                 }
                 vscode.window.showInformationMessage(`局部精化完成，文件已保存: ${path.basename(refinedFilePath)}`)
@@ -534,18 +547,22 @@ export function openGranularityWebview(rootPath: string) {
                     preview: false,
                     viewColumn: vscode.ViewColumn.One
                 })
-                if (activeNode.highlightRange) {
-                    const startPos = doc.positionAt(activeNode.highlightRange.start)
-                    const endPos = doc.positionAt(activeNode.highlightRange.end)
-                    const range = new vscode.Range(startPos, endPos)
-                    
-                    editor.setDecorations(refineHighlightType, [range])
-                    
-                    // 可选：自动滚动到高亮区域
-                    editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport)
+
+                const rangesToDecorate: vscode.Range[] = [];
+                if (activeNode.highlightRanges&&activeNode.highlightRanges.length>0) {
+                    // 处理多段高亮
+                    activeNode.highlightRanges.forEach(r => {
+                        const startPos = doc.positionAt(r.start);
+                        const endPos = doc.positionAt(r.end);
+                        rangesToDecorate.push(new vscode.Range(startPos, endPos));
+                    });
+                    editor.setDecorations(refineHighlightType, rangesToDecorate);
                 } else {
                     // 如果没有高亮信息，清除之前的装饰（防止复用 editor 时残留）
                     editor.setDecorations(refineHighlightType, [])
+                }
+                if (rangesToDecorate.length > 0) {
+                    editor.revealRange(rangesToDecorate[0], vscode.TextEditorRevealType.InCenterIfOutsideViewport);
                 }
             } catch (err) {
                 console.error('Cannot open file: ', err)

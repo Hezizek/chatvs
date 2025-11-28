@@ -242,7 +242,7 @@ export function getModuleSequence(): LeafModule[] {
 export function setOnGoingModule(id: number) {
     const moduleSequence = getModuleSequence()
 
-    if (id < 0 || id >= moduleSequence.length) {
+    if (id < 0 || id > moduleSequence.length) {
         console.warn("Invalid module index: ", id)
         return
     }
