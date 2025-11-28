@@ -8,7 +8,7 @@ export interface GranularityNode {
     description: string,
     filePath: string,
     isActive: boolean,
-    highlightRange?: { start: number, end: number }
+    highlightRanges?: { start: number, end: number }[]
 }
 
 export class GranularityRecord {
@@ -34,7 +34,7 @@ export class GranularityRecord {
     }
 
     // Add a new node at the end of current node list.
-    public addRecord(filePath: string, description: string, show: boolean = true, highlightRange?: { start: number, end: number }) {
+    public addRecord(filePath: string, description: string, show: boolean = true, highlightRanges?: { start: number, end: number }[]) {
         if (this.currentIndex < this.nodes.length - 1) {
             this.nodes = this.nodes.slice(0, this.currentIndex + 1)
         }
@@ -44,7 +44,7 @@ export class GranularityRecord {
             description,
             filePath,
             isActive: true,
-            highlightRange
+            highlightRanges
         }
 
         if (this.currentIndex >= 0) {
