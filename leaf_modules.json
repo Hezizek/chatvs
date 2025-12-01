@@ -1,0 +1,221 @@
+[
+  {
+    "module_name": "01.TuringMachineParser.StateParser",
+    "dependencies": [],
+    "local_variable": [
+      "states: Set<String> - 存储解析到的所有状态标签"
+    ],
+    "interfaces": [
+      {
+        "name": "parseStates",
+        "params": "line: String - 输入的状态集定义行",
+        "return_type": "Set<String>",
+        "description": "1. 验证输入字符串 line 是否以 '#Q = {' 开头且以 '}' 结尾。2. 提取大括号内的内容，按逗号分隔得到各状态标签。3. 验证每个状态标签符合非空白字符规则，只允许字母(a-z,A-Z)、数字(0-9)、下划线(_)。4. 检查状态标签不重复。5. 返回状态标签集合。6. 若格式不符或标签非法，抛出异常，调用方捕获后输出 'syntax error'。"
+      }
+    ],
+    "entry_point_logic": null
+  },
+  {
+    "module_name": "01.TuringMachineParser.SymbolParser",
+    "dependencies": [],
+    "local_variable": [],
+    "interfaces": [
+      {
+        "name": "parseInputSymbols",
+        "params": "line: String - 输入的输入符号集定义行",
+        "return_type": "Set<Character>",
+        "description": "1. 验证 line 是否以 '#S = {' 开头且以 '}' 结尾。2. 提取大括号内的符号，按逗号分隔。3. 验证每个符号为单个 ASCII 可显示字符且不包含空格、逗号、分号、花括号、星号和下划线。4. 检查符号不重复。5. 返回输入符号集合。6. 若格式或符号非法，抛出异常，调用方捕获后输出 'syntax error'。"
+      },
+      {
+        "name": "parseTapeSymbols",
+        "params": "line: String - 输入的纸带符号集定义行",
+        "return_type": "Set<Character>",
+        "description": "1. 验证 line 是否以 '#G = {' 开头且以 '}' 结尾。2. 提取大括号内的符号，按逗号分隔。3. 验证每个符号为单个 ASCII 可显示字符且不包含空格、逗号、分号、花括号、星号（但允许包含下划线'_'作为空白符号）。4. 检查符号不重复，且必须包含下划线 '_'. 5. 返回纸带符号集合。6. 若格式或符号非法，抛出异常，调用方捕获后输出 'syntax error'。"
+      }
+    ],
+    "entry_point_logic": null
+  },
+  {
+    "module_name": "01.TuringMachineParser.InitialStateParser",
+    "dependencies": [],
+    "local_variable": [
+      "initialState: String - 解析得到的初始状态"
+    ],
+    "interfaces": [
+      {
+        "name": "parseInitialState",
+        "params": "line: String, states: Set<String>",
+        "return_type": "String",
+        "description": "1. 验证 line 是否以 '#q0 = ' 开头。2. 提取等号右侧状态标签。3. 验证该状态标签存在于 states 集合中。4. 返回初始状态标签。5. 若格式不符或状态不存在，抛出异常，调用方捕获后输出 'syntax error'。"
+      }
+    ],
+    "entry_point_logic": null
+  },
+  {
+    "module_name": "01.TuringMachineParser.BlankSymbolParser",
+    "dependencies": [],
+    "local_variable": [
+      "blankSymbol: Character - 解析得到的空白符号"
+    ],
+    "interfaces": [
+      {
+        "name": "parseBlankSymbol",
+        "params": "line: String",
+        "return_type": "Character",
+        "description": "1. 验证 line 是否以 '#B = ' 开头。2. 提取等号右侧符号。3. 验证符号为单个字符且必须为下划线 '_'。4. 返回空白符号 '_'. 5. 若格式不符或符号非 '_'，抛出异常，调用方捕获后输出 'syntax error'。"
+      }
+    ],
+    "entry_point_logic": null
+  },
+  {
+    "module_name": "01.TuringMachineParser.FinalStateParser",
+    "dependencies": [],
+    "local_variable": [
+      "finalStates: Set<String> - 解析得到的终结状态集合"
+    ],
+    "interfaces": [
+      {
+        "name": "parseFinalStates",
+        "params": "line: String, states: Set<String>",
+        "return_type": "Set<String>",
+        "description": "1. 验证 line 是否以 '#F = {' 开头且以 '}' 结尾。2. 提取大括号内状态标签，按逗号分隔。3. 验证每个状态标签存在于 states 集合中。4. 返回终结状态集合。5. 若格式不符或包含未声明状态，抛出异常，调用方捕获后输出 'syntax error'。"
+      }
+    ],
+    "entry_point_logic": null
+  },
+  {
+    "module_name": "01.TuringMachineParser.TapeNumberParser",
+    "dependencies": [],
+    "local_variable": [
+      "tapeCount: Integer - 解析得到的纸带数量"
+    ],
+    "interfaces": [
+      {
+        "name": "parseTapeCount",
+        "params": "line: String",
+        "return_type": "Integer",
+        "description": "1. 验证 line 是否以 '#N = ' 开头。2. 提取等号右侧数字字符串。3. 将字符串转换为整数。4. 验证整数为正整数 (>0)。5. 返回纸带数量。6. 若格式不符或非正整数，抛出异常，调用方捕获后输出 'syntax error'。"
+      }
+    ],
+    "entry_point_logic": null
+  },
+  {
+    "module_name": "01.TuringMachineParser.TransitionFunctionParser",
+    "dependencies": [],
+    "local_variable": [
+      "transitionFunctions: List<TransitionFunction> - 解析得到的所有转移函数"
+    ],
+    "interfaces": [
+      {
+        "name": "parseTransitionFunction",
+        "params": "line: String, tapeCount: Integer, states: Set<String>, tapeSymbols: Set<Character>",
+        "return_type": "TransitionFunction",
+        "description": "1. 忽略以 ';' 开头的注释行和空行。2. 将 line 按空格分割成五个部分：旧状态、旧符号组、新符号组、移动方向组、新状态。3. 验证旧状态和新状态均在 states 集合中。4. 验证旧符号组和新符号组长度均等于 tapeCount。5. 验证旧符号组中的每个符号为 tapeSymbols 中的字符或 '*'，且 '*' 不能为 '_'。6. 验证新符号组中的每个符号为 tapeSymbols 中字符或 '*'。7. 验证移动方向组长度为 tapeCount，且每个字符为 'l','r'或'*'。8. 允许 '*' 在旧符号组中表示匹配除空白符 '_' 外任意符号；新符号组中 '*' 表示保持原符号不变。9. 若以上任一条件不符合，抛出异常，调用方捕获后输出 'syntax error'。10. 返回 TransitionFunction 对象。"
+      }
+    ],
+    "entry_point_logic": null
+  },
+  {
+    "module_name": "01.TuringMachineParser.CommentAndEmptyLineHandler",
+    "dependencies": [],
+    "local_variable": [],
+    "interfaces": [
+      {
+        "name": "isIgnorableLine",
+        "params": "line: String",
+        "return_type": "Boolean",
+        "description": "1. 判断 line 是否为空行或只包含空白字符。2. 判断 line 是否以 ';' 开头，视为注释行。3. 返回 true 表示该行应忽略，false 表示需要解析。"
+      }
+    ],
+    "entry_point_logic": null
+  },
+  {
+    "module_name": "01.TuringMachineParser.SyntaxValidator",
+    "dependencies": [
+      "01.TuringMachineParser.StateParser",
+      "01.TuringMachineParser.SymbolParser",
+      "01.TuringMachineParser.InitialStateParser",
+      "01.TuringMachineParser.BlankSymbolParser",
+      "01.TuringMachineParser.FinalStateParser",
+      "01.TuringMachineParser.TapeNumberParser",
+      "01.TuringMachineParser.TransitionFunctionParser",
+      "01.TuringMachineParser.CommentAndEmptyLineHandler"
+    ],
+    "local_variable": [
+      "parsedProgram: TuringMachineProgram - 存储完整的图灵机程序模型",
+      "parsingResult: ParsingResult - 记录解析结果状态和错误信息"
+    ],
+    "interfaces": [
+      {
+        "name": "validateAndParse",
+        "params": "lines: List<String>, verbose: Boolean",
+        "return_type": "ParsingResult",
+        "description": "1. 初始化空的 TuringMachineProgram 结构。2. 遍历 lines，利用 CommentAndEmptyLineHandler 判断是否忽略。3. 按照附录1定义的顺序，依次调用各子解析模块解析对应部分。4. 每个子模块解析失败时，设置 parsingResult.IsSuccess = false，ErrorMessage = 'syntax error'。5. 若 verbose 模式开启且遇到错误，生成 VerboseErrorDetail 包含出错行及提示信息。6. 收集转移函数，验证每条转移函数合法性。7. 解析完成后，确保各部分内部一致性（如初始状态和终结状态均在状态集内，空白符号正确）。8. 返回 ParsingResult，包含完整的 TuringMachineProgram，或错误信息。"
+      }
+    ],
+    "entry_point_logic": null
+  },
+  {
+    "module_name": "01.TuringMachineSimulator",
+    "dependencies": [
+      "01.TuringMachineParser"
+    ],
+    "local_variable": [
+      "program: TuringMachineProgram - 当前加载的图灵机程序",
+      "tapes: List<Tape> - 多条纸带，包含符号序列和读写头位置",
+      "currentState: String - 当前状态标签",
+      "stepCounter: Integer - 模拟步骤计数",
+      "verboseMode: Boolean - 是否启用 verbose 模式"
+    ],
+    "interfaces": [
+      {
+        "name": "initialize",
+        "params": "program: TuringMachineProgram, input: SimulationInput, verbose: Boolean",
+        "return_type": "void",
+        "description": "1. 设置当前 program。2. 验证 input.InputString 中所有字符均在 program.InputSymbols 中。3. 若输入含非法字符，抛出异常，错误信息为 'illegal input' (普通模式) 或 verbose 格式错误提示。4. 初始化 tapes 列表，第一条纸带 Symbols 为 input.InputString 字符列表，读写头位置为首个字符索引0，其他纸带为空，读写头位置为0。5. 设置 currentState 为 program.InitialState。6. 初始化 stepCounter 为 0。7. 设置 verboseMode 标志。"
+      },
+      {
+        "name": "simulate",
+        "params": "",
+        "return_type": "List<SimulationStepSnapshot>",
+        "description": "1. 初始化空的 SimulationStepSnapshot 集合。2. 每步：2.1. 记录当前状态，纸带内容和读写头位置作为 SimulationStepSnapshot。2.2. 根据 currentState 和当前各纸带读写头下符号匹配 program.TransitionFunctions 中的转移函数。2.3. 匹配规则中旧符号组允许 '*' 匹配除空白符 '_' 外任意符号。若无匹配转移，停止模拟。2.4. 执行匹配转移：根据新符号组写入符号，'*' 表示保持原符号不变；调整各纸带读写头位置，'l' 左移、'r' 右移、'*' 不动；更新 currentState 为转移函数的 NextState。2.5. 步骤计数增加。3. 返回所有步骤快照。4. 停机条件：找不到匹配转移函数。"
+      },
+      {
+        "name": "getFinalTapeContent",
+        "params": "",
+        "return_type": "String",
+        "description": "1. 取第一条纸带的 Symbols 和 HeadPosition。2. 定位第一条纸带上最左和最右非空白符号（非 '_'）的索引区间。3. 提取该区间符号拼接成字符串。4. 若无非空白符号，返回空字符串。"
+      }
+    ],
+    "entry_point_logic": null
+  },
+  {
+    "module_name": "01.CommandLineInterface",
+    "dependencies": [
+      "01.TuringMachineParser",
+      "01.TuringMachineSimulator"
+    ],
+    "local_variable": [
+      "verboseMode: Boolean - 是否启用 verbose 模式",
+      "tmFileName: String - 图灵机程序文件名",
+      "inputString: String - 输入字符串",
+      "parsingResult: ParsingResult - 解析结果",
+      "simulator: 01.TuringMachineSimulator - 图灵机模拟器实例"
+    ],
+    "interfaces": [
+      {
+        "name": "parseCommandLineArguments",
+        "params": "args: List<String>",
+        "return_type": "void",
+        "description": "1. 遍历 args，识别 '-h'/'--help' 输出帮助信息并退出。2. 识别 '-v'/'--verbose' 设 verboseMode 为 true。3. 解析剩余参数，要求参数个数恰为2，分别为 tmFileName 和 inputString。4. 若参数格式或数量不符，输出 'usage: turing [-v|--verbose] [-h|--help] <tm> <input>' 到 stderr，返回错误退出码。"
+      },
+      {
+        "name": "run",
+        "params": "",
+        "return_type": "Integer",
+        "description": "1. 调用 parseCommandLineArguments 解析参数，出错则退出。2. 读取 tmFileName 文件内容为字符串列表 lines。3. 调用 SyntaxValidator.validateAndParse(lines, verboseMode) 解析图灵机程序。4. 若解析失败，输出 parsingResult.ErrorMessage 到 stderr。若 verboseMode，输出 parsingResult.VerboseErrorDetail 到 stderr，返回错误退出码。5. 使用 TuringMachineSimulator.initialize(parsedProgram, SimulationInput{inputString}, verboseMode)。6. 捕获初始化时输入非法异常，输出对应错误信息到 stderr，返回错误退出码。7. 如果 verboseMode，在 stdout 输出输入字符串及格式化的 ERR 或 RUN 分隔线。8. 调用 simulator.simulate() 获取步骤快照列表。9. 如果 verboseMode，按附录中格式输出每一步快照详细信息，包括 Step, State, 各纸带的 Index, Tape, Head，确保对齐和空格符号使用 '_'。10. 输出第一条纸带最终内容，格式为一行字符串。11. 如果 verboseMode，输出 'Result: <内容>' 和 '==================== END ===================='。12. 返回成功退出码0。"
+      }
+    ],
+    "entry_point_logic": "1. 程序启动后，调用 parseCommandLineArguments 解析命令行参数。2. 读取图灵机程序文件，调用 SyntaxValidator 解析图灵机程序。3. 若解析失败，按要求输出错误信息并退出。4. 使用解析结果初始化 01.TuringMachineSimulator。5. 验证输入字符串合法性，非法时输出对应错误信息。6. 根据 verboseMode 调用模拟器进行模拟，输出对应格式的运行信息。7. 程序结束时返回0或错误码。"
+  }
+]

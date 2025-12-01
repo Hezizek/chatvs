@@ -67,6 +67,12 @@
           "type": "string",
           "description": "Azure OpenAI 端点",
           "markdownDescription": "你的 Azure OpenAI 端点地址，格式如: `https://xxx.openai.azure.com/`"
+        },
+        "codeRefinement.showDebugTools": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show debug buttons for development testing.",
+          "markdownDescription": "是否显示开发调试按钮（用于测试模块划分等功能）。"
         }
       }
     },
