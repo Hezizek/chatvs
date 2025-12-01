@@ -6,6 +6,7 @@ import { GranularityNode, GranularityRecord } from './granularity-record'
 import { getSrcFileSuffix } from '../tools/lang-util'
 import { revealTreeItem, setOnGoingModule, getModuleSequence } from '../tree-view/create-tree-view'
 import * as Diff from 'diff'
+import {doModuleDivision,getCommonDS, getLeafModules} from '../tree-view/create-tree-view'
 
 export let currentRecord: GranularityRecord | null = null
 
@@ -45,6 +46,12 @@ class GranularityViewProvider implements vscode.WebviewViewProvider {
         }
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview)
+
+        // [新增 1] 视图初始化时，读取当前配置并发送给前端
+        const config = vscode.workspace.getConfiguration('codeRefinement');
+        const showDebug = config.get<boolean>('showDebugTools') || false;
+        webviewView.webview.postMessage({ type: 'toggleDebug', visible: showDebug });
+
         webviewView.webview.onDidReceiveMessage(async data => {
             switch (data.type) {
                 case 'executeCommand':
@@ -128,6 +135,19 @@ function isCurrentRecordTarget(targetDir: string): boolean {
 // Invoked in activation function.
 export function registerWebviewForGranularityPanel(context: vscode.ExtensionContext) {
     const provider = new GranularityViewProvider(context.extensionUri)
+
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('codeRefinement.showDebugTools')) {
+                const config = vscode.workspace.getConfiguration('codeRefinement');
+                const showDebug = config.get<boolean>('showDebugTools') || false;
+                
+                // 发送消息给 Webview
+                GranularityViewProvider.postMessage({ type: 'toggleDebug', visible: showDebug });
+            }
+        })
+    );
+
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('GranularityView', provider)
     )
@@ -143,6 +163,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
     context.subscriptions.push(
         vscode.commands.registerCommand('refinement.globalRefine', async (payload) => {
+            doModuleDivision('/Users/kai/code/projects/01',true,context);
             const editor = vscode.window.activeTextEditor;
             if (!editor) {
                 vscode.window.showWarningMessage('请打开一个文件夹进行全局精化')
@@ -494,6 +515,32 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
             }
 		})
 	)
+    // 1. 测试 doModuleDivision (isFirstLevel = true)
+    context.subscriptions.push(
+        vscode.commands.registerCommand('test.doModuleDivisionTrue', async () => {
+            await doModuleDivision("/Users/kai/code/projects/01/content.txt", true, context);
+        })
+    );
+
+    // 2. 测试 doModuleDivision (isFirstLevel = false)
+    context.subscriptions.push(
+        vscode.commands.registerCommand('test.doModuleDivisionFalse', async () => {
+            await doModuleDivision("/Users/kai/code/projects/01/TuringMachineParser/content.txt", false, context);
+        })
+    );
+
+    // 3. 测试 getCommonDS
+    context.subscriptions.push(
+        vscode.commands.registerCommand('test.getCommonDS', async () => {
+            const resultPath = await getCommonDS("/Users/kai/code/projects/01", context);
+        })
+    );
+    // 4. 测试 getCommonLeafModules
+    context.subscriptions.push(
+        vscode.commands.registerCommand('test.getCommonLeafModules', async () => {
+            const resultPath = await getLeafModules("/Users/kai/code/projects/01","/Users/kai/code/projects/01/common_data_structures.json", context);
+        })
+    );
 }
 
  // Open the granularity webview for a leaf node.

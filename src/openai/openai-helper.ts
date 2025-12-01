@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as dotenv from 'dotenv'
 import { AzureOpenAI } from 'openai';
+import path from 'path';
 
 dotenv.config();
 
@@ -83,7 +84,7 @@ export async function callOpenAIForJSON(
                 }
             ],
             temperature: 0.7,
-            max_tokens: 2000
+            max_tokens: 1024*8
         });
 
         return response.choices[0]?.message?.content || '';
@@ -175,3 +176,83 @@ export function getGenerateCodePrompt(fileContent: string, lastGranularity: stri
         user: `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。代码应完全对应伪代码的逻辑流程。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`
     };
 }
+
+export async function getModuleDivisionPrompt1(filePath: string, context: vscode.ExtensionContext): Promise<{ system: string; user: string }> {
+    const systemPromptPath = context.asAbsolutePath('resources/prompts/非碎片化模块划分.md');
+    const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
+    const systemPrompt = new TextDecoder().decode(systemPromptBytes);
+    
+    const fileContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+    const fileContent = new TextDecoder().decode(fileContentBytes);
+
+    const projectName = path.basename(path.dirname(filePath));
+    const userPrompt = `请根据以下原始需求文档进行模块划分：\n\n${fileContent}\n\n项目名称为：${projectName}。你所划分的模块名称应该使用项目名称作为前缀，以确保唯一性。例如，如果项目名称是“a“，则模块名称可以是”a/module1“、“a/module2“等。\n\n
+    请直接返回符合要求的 JSON 数组，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+
+    
+    return {
+        system: systemPrompt,
+        user: userPrompt
+    };
+}
+
+export async function getModuleDivisionPrompt2(modulesPath:string, requirementsPath:string, moduleName: string, context: vscode.ExtensionContext): Promise<{ system: string; user: string }> {
+    const systemPromptPath = context.asAbsolutePath('resources/prompts/子模块划分.md');
+    const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
+    const systemPrompt = new TextDecoder().decode(systemPromptBytes);
+
+    const modulesContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(modulesPath));
+    const modulesContent = new TextDecoder().decode(modulesContentBytes);
+
+    const requirementsContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(requirementsPath));
+    const requirementsContent = new TextDecoder().decode(requirementsContentBytes);
+
+    const userPrompt = `原始需求文档：\n${requirementsContent}\n\n当前系统架构（包含所有模块的 JSON 列表）：\n${modulesContent}\n\n待拆解的目标模块名称：\n${moduleName}\n\n请直接返回符合要求的 JSON 数组，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+
+    return {
+        system: systemPrompt,
+        user: userPrompt
+    };
+}
+
+export async function getCommonDSPrompt(leafModulesPath:string, requirementsPath:string, context: vscode.ExtensionContext): Promise<{ system: string; user: string }> {
+    const systemPromptPath = context.asAbsolutePath('resources/prompts/通用数据结构提示词.md');
+    const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
+    const systemPrompt = new TextDecoder().decode(systemPromptBytes);
+
+    const modulesContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(leafModulesPath));
+    const modulesContent = new TextDecoder().decode(modulesContentBytes);
+    
+    const requirementsContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(requirementsPath));
+    const requirementsContent = new TextDecoder().decode(requirementsContentBytes);
+    
+    const userPrompt = `原始需求文档：\n${requirementsContent}\n\n当前系统架构（包含所有模块的 JSON 列表）：\n${modulesContent}\n\n请直接返回符合要求的 JSON 数组，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+
+    return {
+        system: systemPrompt,
+        user: userPrompt
+    };
+}
+
+export async function getLeafModules(leafModulesPath:string, requirementsPath:string, commonDSPath:string, context: vscode.ExtensionContext): Promise<{ system: string; user: string }> {
+    const systemPromptPath = context.asAbsolutePath('resources/prompts/所有叶子节点生成提示词.md');
+    const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
+    const systemPrompt = new TextDecoder().decode(systemPromptBytes);
+
+    const modulesContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(leafModulesPath));
+    const modulesContent = new TextDecoder().decode(modulesContentBytes);
+    
+    const requirementsContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(requirementsPath));
+    const requirementsContent = new TextDecoder().decode(requirementsContentBytes);
+    
+    const commonDSContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(commonDSPath));
+    const commonDSContent = new TextDecoder().decode(commonDSContentBytes);
+    
+    const userPrompt = `原始需求文档：\n${requirementsContent}\n\n当前系统架构（包含所有模块的 JSON 列表）：\n${modulesContent}\n\n通用数据结构定义：\n${commonDSContent}\n\n请直接返回符合要求的 JSON 数组，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+    
+    return {
+        system: systemPrompt,
+        user: userPrompt
+    };
+}
+
