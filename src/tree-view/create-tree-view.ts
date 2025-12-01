@@ -1,51 +1,161 @@
 import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as path from 'path'
+import { assert } from '../tools/asserts'
 import { disposeCurrentRecordAndCloseWebview, openGranularityWebview } from '../granularity-view/create-granularity-panel'
 import { GranularityRecord } from '../granularity-view/granularity-record'
 
 // Set a global tree data provider.
 let fileTreeProvider: FileTreeProvider | null = null
 
-export class FileNode extends vscode.TreeItem {
-    constructor(
-        public readonly label: string,
-        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly absolutePath: string,
-        public children?: FileNode[]
-    ) {
-        super(label, collapsibleState)
-        this.contextValue = collapsibleState === vscode.TreeItemCollapsibleState.None ? 'leafNode' : 'nonLeafNode'
+// The actual tree structure data stored in memory.
+const localNodeTree: NodeTreeElement[] = []
 
-        // Set icon based on node type.
-        const iconName = this.collapsibleState === vscode.TreeItemCollapsibleState.None ? 'chrome-maximize' : 'type-hierarchy-sub'
-        this.iconPath = new vscode.ThemeIcon(
-            iconName,
-            new vscode.ThemeColor('charts.blue')
-        )
+enum NodeType {
+    Project,
+    Module,
+    Requirement,
+    DataStructure
+}
+
+abstract class NodeTreeElement {
+    constructor(
+        public label: string,
+        public absolutePath: string,
+        public type: NodeType,
+        public parent?: DirectoryNode,
+    ) {}
+
+    abstract getContentFilePath(): string
+    abstract isRefinable(): boolean
+    abstract isDividable(): this is DirectoryNode
+    abstract isExtendable(): boolean
+    abstract isLeaf(): boolean
+
+    public getBrothers(): NodeTreeElement[] {
+        return this.parent ? this.parent.children : localNodeTree
+    }
+
+    public getTypeString(): string {
+        return NodeType[this.type]
     }
 }
 
-export class FileTreeProvider implements vscode.TreeDataProvider<FileNode> {
-    private _onDidChangeTreeData: vscode.EventEmitter<FileNode | undefined> = new vscode.EventEmitter<FileNode | undefined>()
-    readonly onDidChangeTreeData: vscode.Event<FileNode | undefined> = this._onDidChangeTreeData.event
+class FileNode extends NodeTreeElement {
+    constructor(
+        label: string,
+        absolutePath: string,
+        type: NodeType.Requirement | NodeType.DataStructure,
+        parent?: DirectoryNode,
+    ) {
+        super(label, absolutePath, type, parent)
+    }   
 
-    constructor(public treeData: FileNode[]) { }
-
-    getTreeItem(element: FileNode): vscode.TreeItem {
-        return element
+    getContentFilePath(): string {
+        return this.absolutePath
     }
 
-    getChildren(element?: FileNode): Thenable<FileNode[]> {
+    isRefinable(): boolean {
+        return false
+    }
+
+    isDividable(): this is DirectoryNode {
+        return false
+    }
+
+    isExtendable(): boolean {
+        return false
+    }
+
+    isLeaf(): boolean {
+        return true
+    }
+}
+
+class DirectoryNode extends NodeTreeElement {
+    public children: NodeTreeElement[]
+    constructor(
+        label: string,
+        absolutePath: string,
+        type: NodeType.Project | NodeType.Module,
+        parent?: DirectoryNode,
+        children?: NodeTreeElement[]
+    ) {
+        super(label, absolutePath, type, parent)
+        this.children = children || []
+    }
+
+    getContentFilePath(): string {
+        return path.join(this.absolutePath, 'content.txt')
+    }
+
+    isRefinable(): boolean {
+        return this.type === NodeType.Module && this.children.length === 0
+    }
+
+    isDividable(): this is DirectoryNode {
+        return true
+    }
+
+    isExtendable(): boolean {
+        return this.children.length > 0
+    }
+
+    isLeaf(): boolean {
+        return this.children.length === 0
+    }
+}
+
+
+export class FileTreeProvider implements vscode.TreeDataProvider<NodeTreeElement> {
+    private _onDidChangeTreeData = new vscode.EventEmitter<NodeTreeElement | NodeTreeElement[] | undefined | null>()
+    onDidChangeTreeData = this._onDidChangeTreeData.event
+
+    getTreeItem(element: NodeTreeElement): vscode.TreeItem {
+        const treeItem = new vscode.TreeItem(element.label, this.getCollapsibleState(element))
+        treeItem.contextValue = this.getContextValue(element)
+        treeItem.iconPath = this.getIconPath(element)
+        return treeItem
+    }
+
+    private getCollapsibleState(element: NodeTreeElement): vscode.TreeItemCollapsibleState {
+        return element.isExtendable() ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
+    }
+
+    // TODO
+    private getIconPath(element: NodeTreeElement): vscode.ThemeIcon {
+        switch (element.type) {
+            case NodeType.Project:          
+                return new vscode.ThemeIcon('project', new vscode.ThemeColor('charts.white'))
+            case NodeType.Module:           
+                const iconName = element.isLeaf() ? 'circle' : 'type-hierarchy'
+                return new vscode.ThemeIcon(iconName, new vscode.ThemeColor('charts.blue'))
+            case NodeType.Requirement:      
+                return new vscode.ThemeIcon('checklist', new vscode.ThemeColor('charts.yellow'))
+            case NodeType.DataStructure:    
+                return new vscode.ThemeIcon('database', new vscode.ThemeColor('charts.orange'))
+            default:
+                throw new Error(`Unexpected node type for icon path retrieval: ${NodeType[element.type]}`)
+        }
+    }
+
+    private getContextValue(element: NodeTreeElement): string {
+        const leafContext = element.isLeaf() ? 'leaf' : 'nonLeaf'
+        return element.getTypeString() + leafContext
+    }
+
+    getChildren(element?: NodeTreeElement): Thenable<NodeTreeElement[]> {
         if (!element) {
-            return Promise.resolve(this.treeData)
+            return Promise.resolve(localNodeTree)
         }
 
-        return Promise.resolve(element.children || [])
+        return Promise.resolve(
+            element.isDividable() ? element.children : []
+        )
     }
 
     // Update the view after changing node data.
-    refresh(fileNode: FileNode | undefined) {
+    refresh(fileNode: NodeTreeElement | NodeTreeElement[] | undefined | null) {
         this._onDidChangeTreeData.fire(fileNode)
     }
 }
@@ -66,7 +176,7 @@ export async function revealTreeItem(nodePath: string) {
 
 const openChatGPTView = (context: vscode.ExtensionContext) => {
     vscode.commands.executeCommand("workbench.view.extension.CodeToolBox").then(() => {
-        fileTreeProvider = new FileTreeProvider([])
+        fileTreeProvider = new FileTreeProvider()
 
         const treeView = vscode.window.createTreeView('CodeToolBox.chatGPTView', {
             treeDataProvider: fileTreeProvider
@@ -76,141 +186,188 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
 
         // Listen to node selection.
         treeView.onDidChangeSelection(async event => {
-            if (fileTreeProvider && event.selection.length === 1) {
+            assert(fileTreeProvider, "File tree provider is not initialized.")
+
+            // When single node selected, we need to handle the click event.
+            if (event.selection.length === 1) {
+
                 const selected = event.selection[0]
-                const filePath = path.join(selected.absolutePath, 'content.txt')
+                vscode.commands.executeCommand(
+                    "setContext",
+                    "CodeToolBox.enableCreateModule",
+                    selected.isDividable()
+                )
 
-                try {
-                    const doc = await vscode.workspace.openTextDocument(filePath)
-                    await vscode.window.showTextDocument(doc)
-                } catch (error) {
-                    console.error(`Failed to open file ${filePath}.`)
-                    return
-                }
+                const contentPath = selected.getContentFilePath()
+                const doc = await vscode.workspace.openTextDocument(contentPath)
+                await vscode.window.showTextDocument(doc)
 
-                if (selected.contextValue === 'leafNode') {
+                if (selected.isRefinable()) {
                     openGranularityWebview(selected.absolutePath)
                 } else {
                     // If non-leaf node, close the granularity panel.
                     disposeCurrentRecordAndCloseWebview()
                 }
+
+            } else {
+                // Multiple or no selection, disable create module command.
+                vscode.commands.executeCommand(
+                    "setContext",
+                    "CodeToolBox.enableCreateModule",
+                    false
+                )
             }
         })
 
         // Register commands for deleting node.
         context.subscriptions.push(
-            vscode.commands.registerCommand('CodeToolBox.deleteNode', async (node: FileNode) => {
-                if (fileTreeProvider) {
-                    // Deleting corresponding folder in fs.
-                    try {
-                        fs.rmSync(node.absolutePath, { recursive: true, force: true })
-                    } catch (error) {
-                        vscode.window.showErrorMessage(`Error occurred while deleting node "${node.label}".`)
-                        console.error(`Error occurred while deleting node "${node.label}": `, error)
-                        return
-                    }
+            vscode.commands.registerCommand('CodeToolBox.deleteNode', async (node: DirectoryNode) => {
 
-                    // Function to recursively find and delete the node from tree data.
-                    function removeNode(nodes: FileNode[]) {
-                        const index = nodes.indexOf(node)
-                        if (index >= 0) {
-                            nodes.splice(index, 1)
-                            return true
-                        }
-                        for (const n of nodes) {
-                            if (n.children && removeNode(n.children)) return true
-                        }
-                        return false
-                    }
+                assert(fileTreeProvider, "File tree provider is not initialized.")
 
-                    removeNode(fileTreeProvider.treeData)
-                    fileTreeProvider.refresh(undefined)
-                }
+                // Deleting corresponding folder in fs.
+                fs.rmSync(node.absolutePath, { recursive: true, force: true })
+
+                const parentChildren = node.getBrothers()
+                const index = parentChildren.indexOf(node)
+                
+                assert(index >= 0, 'Node to delete not found in parent\'s children.')
+                parentChildren.splice(index, 1)
+                fileTreeProvider.refresh(node.parent)
             })
         )
 
+        // Command for creating a new node under existing parent.
+        // To be more specific, the node should not be a root node corresponding to a project.
         context.subscriptions.push(
-            vscode.commands.registerCommand('CodeToolBox.createLeafNode', () => {
-                createNode()
-            })
-        )
+            vscode.commands.registerCommand('CodeToolBox.createModule', async () => {
 
-        context.subscriptions.push(
-            vscode.commands.registerCommand('CodeToolBox.createNonLeafNode', () => {
-                createNode(true)
-            })
-        )
+                assert(fileTreeProvider, "File tree provider is not initialized.")
 
-        // Callback functions for creating non-leaf and leaf node.
-        async function createNode(nonLeaf: boolean = false) {
-            if (fileTreeProvider) {
                 const selected = treeView.selection[0]
-                if (selected && selected.contextValue === 'leafNode') {
-                    console.log('Cannot create child for leaf node.')
-                    return
-                }
 
-                const targetPath = selected ? selected.absolutePath : vscode.workspace.getConfiguration('ai').get<string>('path')!
-                const typeLabel = nonLeaf ? "non-leaf" : "leaf"
-                const defaultName = nonLeaf ? "New Non-leaf Node" : "New Leaf Node"
+                assert(selected, 'No node is selected.')
+                assert(selected.isDividable(), 'Selected node is not dividable.')
 
-                const newNodeName = await vscode.window.showInputBox({
-                    prompt: `Enter new ${typeLabel} node name`,
+                const targetPath = selected.absolutePath
+                const defaultName = "New Module"
+
+                const newModuleName = await vscode.window.showInputBox({
+                    prompt: 'Enter a new module name',
                     value: defaultName
                 })
 
                 // User cancel.
-                if (!newNodeName) return
+                if (!newModuleName) return
 
                 // Create target dir and files in fs.
-                const newNodePath = path.join(targetPath, newNodeName)
-                const filePath = path.join(newNodePath, "content.txt")
-                try {
-                    if (fs.existsSync(newNodePath)) {
-                        vscode.window.showErrorMessage(`Node "${newNodeName}" already exists.`)
-                        return
-                    }
-                    fs.mkdirSync(newNodePath, { recursive: true })
-                    fs.writeFileSync(filePath, "Empty node content.")
-                    try {
-                        // 实例化一个临时的 Record 对象指向新目录
-                        const record = new GranularityRecord(newNodePath);
-
-                        // 添加第一条记录：指向刚创建的 content.txt
-                        const index = record.getCurrentIndex();
-                        record.addRecord(filePath, '粒度' + (index + 1), true);
-
-                        // 保存到 node.json 并释放
-                        record.dispose();
-                    } catch (e) {
-                        console.error('初始化粒度记录失败:', e);
-                    }
-                } catch (error) {
-                    console.error(`Error occurred while creating file "${filePath}".`, error)
+                const newModulePath = path.join(targetPath, newModuleName)
+                const filePath = path.join(newModulePath, "content.txt")
+                if (fs.existsSync(newModulePath)) {
+                    vscode.window.showErrorMessage(`Module "${newModuleName}" already exists.`)
                     return
                 }
 
-                const itemState = nonLeaf ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
-                const newNode = new FileNode(
-                    newNodeName,
-                    itemState,
-                    newNodePath
+                fs.mkdirSync(newModulePath, { recursive: true })
+                fs.writeFileSync(filePath, "Empty content.")
+        
+                // TODO
+                // 实例化一个临时的 Record 对象指向新目录
+                const record = new GranularityRecord(newModulePath)
+                // 添加第一条记录：指向刚创建的 content.txt
+                const index = record.getCurrentIndex()
+                record.addRecord(filePath, '粒度' + (index + 1), true)
+
+                // 保存到 node.json 并释放
+                record.dispose()
+
+                const newNode = new DirectoryNode(newModuleName, newModulePath, NodeType.Module, selected)
+                const children = selected.children
+                children.push(newNode)
+
+                fileTreeProvider.refresh(selected)
+            })
+        )
+
+        // Checked.
+        context.subscriptions.push(
+            vscode.commands.registerCommand('CodeToolBox.createProj', async () => {
+
+                assert(fileTreeProvider, "File tree provider is not initialized.")
+
+                const targetPath = vscode.workspace.getConfiguration('ai').get<string>('path')
+                const defaultName = "New Project"
+
+                assert(targetPath, "Target file path in settings is not configured.")
+
+                const newProjName = await vscode.window.showInputBox({
+                    prompt: 'Enter a new project name',
+                    value: defaultName
+                })
+
+                // User cancel.
+                if (!newProjName) return
+
+                // Create target dir and files in fs.
+                const newProjPath = path.join(targetPath, newProjName)
+                const filePath = path.join(newProjPath, "content.txt")
+                
+                if (fs.existsSync(newProjPath)) {
+                    vscode.window.showErrorMessage(`Project "${newProjName}" already exists.`)
+                    return
+                }
+                
+                fs.mkdirSync(newProjPath, { recursive: true })
+                fs.writeFileSync(filePath, "Empty content.")
+
+                const newRoot = new DirectoryNode(newProjName, newProjPath, NodeType.Project)
+
+                // When creating a new project, automtically create a project requirement node under it.
+                const reqNode = new FileNode('Project Requirements', filePath, NodeType.Requirement, newRoot)
+                newRoot.children.push(reqNode)
+                localNodeTree.push(newRoot)
+                
+                fileTreeProvider.refresh(undefined)
+            })
+        )
+
+        context.subscriptions.push(
+            vscode.commands.registerCommand('CodeToolBox.divideRootModule', async (node: NodeTreeElement) => {
+                // TODO
+            })
+        )
+
+        context.subscriptions.push(
+            vscode.commands.registerCommand('CodeToolBox.divideModule', async (node: NodeTreeElement) => {
+                // TODO
+            })
+        )
+
+        context.subscriptions.push(
+            vscode.commands.registerCommand('CodeToolBox.extractCommonDataStructure', async (node: DirectoryNode) => {
+                assert(fileTreeProvider, "File tree provider is not initialized.")
+                assert(node.type === NodeType.Project, 'Extracting common data structure is only allowed on project nodes.')
+
+                const filePath = path.join(node.absolutePath, 'commen-data-structures.txt')
+
+                fs.writeFileSync(filePath, 'Common Data Structures')
+                
+                const dataStructureNode = new FileNode(
+                    'Common Data Structures',
+                    path.join(node.absolutePath, 'commen-data-structures.txt'),
+                    NodeType.DataStructure,
+                    node
                 )
 
-                if (selected) {
-                    if (!selected.children) selected.children = []
-                    selected.children.push(newNode)
-                } else {
-                    fileTreeProvider.treeData.push(newNode)
-                }
-
-                fileTreeProvider.refresh(undefined)
-            }
-        }
+                node.children.unshift(dataStructureNode) 
+                fileTreeProvider.refresh(node)
+            })
+        )
 
         vscode.commands.executeCommand("setContext", "CodeToolBox.chatGPTView", true)
     })
 }
+
 
 
 // The following functions are exposed to the granularity view module, for handling seq.json file for the whole project.

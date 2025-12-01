@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 外框圆角矩形 -->
+  <rect x="3" y="4" width="10" height="9" rx="2"/>
+  <!-- 顶部横线（箱盖） -->
+  <line x1="3" y1="6" x2="13" y2="6"/>
+
+  <!-- 右下角加号圆圈 -->
+  <g transform="translate(11, 11)">
+    <circle r="5.2" fill="#252526"/>
+    <circle r="4.5" fill="#C5C5C5"/>
+    <path d="M0 -2.5 V2.5 M-2.5 0 H2.5" stroke="#252526" stroke-width="1.0" stroke-linecap="round"/>
+  </g>
+</svg>
