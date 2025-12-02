@@ -67,12 +67,6 @@
           "type": "string",
           "description": "Azure OpenAI 端点",
           "markdownDescription": "你的 Azure OpenAI 端点地址，格式如: `https://xxx.openai.azure.com/`"
-        },
-        "codeRefinement.showDebugTools": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show debug buttons for development testing.",
-          "markdownDescription": "是否显示开发调试按钮（用于测试模块划分等功能）。"
         }
       }
     },
@@ -125,19 +119,19 @@
         "title": "删除节点"
       },
       {
-        "command": "CodeToolBox.divideRootModule",
-        "title": "划分模块",
-        "enablement": "viewItem =~ /leaf/"
-      },
-      {
         "command": "CodeToolBox.divideModule",
         "title": "划分子模块",
-        "enablement": "viewItem =~ /leaf/"
+        "enablement": "viewItem =~ /dividable/"
       },
       {
         "command": "CodeToolBox.extractCommonDataStructure",
         "title": "提取通用数据结构",
-        "enablement": "viewItem =~ /nonLeaf/"
+        "enablement": "viewItem =~ /dataStructureAddable/"
+      },
+      {
+        "command": "CodeToolBox.getLeafModules",
+        "title": "结束设计阶段",
+        "enablement": "viewItem =~ /designmentCompletable/"
       }
     ],
     "keybindings": [
@@ -229,23 +223,23 @@
       "view/item/context": [
         {
           "command": "CodeToolBox.deleteNode",
-          "when": "view == CodeToolBox.chatGPTView",
+          "when": "view == CodeToolBox.chatGPTView && (viewItem =~ /module/ || viewItem =~ /project/)",
           "group": "2_human_design@2"
         },
         {
-          "command": "CodeToolBox.divideRootModule",
-          "when": "view == CodeToolBox.chatGPTView && viewItem =~ /Project/",
-          "group": "1_ai_design@1"
-        },
-        {
           "command": "CodeToolBox.extractCommonDataStructure",
-          "when": "view == CodeToolBox.chatGPTView && viewItem =~ /Project/",
+          "when": "view == CodeToolBox.chatGPTView && viewItem =~ /project/",
           "group": "1_ai_design@1"
         },
         {
           "command": "CodeToolBox.divideModule",
-          "when": "view == CodeToolBox.chatGPTView && viewItem =~ /Module/",
+          "when": "view == CodeToolBox.chatGPTView && (viewItem =~ /module/ || viewItem =~ /project/)",
           "group": "1_ai_design@1"
+        },
+        {
+          "command": "CodeToolBox.getLeafModules",
+          "when": "view == CodeToolBox.chatGPTView && viewItem =~ /project/",
+          "group": "1_ai_design@2"
         }
       ]
     }

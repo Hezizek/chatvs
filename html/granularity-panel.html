@@ -11,15 +11,6 @@
 <body>
     <div id="button-bar-container">
 
-        <div id="debug-section"
-            style="padding: 5px; border-bottom: 1px solid var(--vscode-panel-border); margin-bottom: 5px; display: none;">
-            <span style="font-size: 0.8em; font-weight: bold; margin-right: 5px;">测试区:</span>
-            <button onclick="sendCommand('test.doModuleDivisionTrue')">划分(True)</button>
-            <button onclick="sendCommand('test.doModuleDivisionFalse')">划分(False)</button>
-            <button onclick="sendCommand('test.getCommonDS')">生成DS</button>
-            <button onclick="sendCommand('test.getCommonLeafModules')">生成leafModules</button>
-
-        </div>
         <!-- Displayed for ongoing modules. -->
         <div id="button-bar-ongoing" class="button-bar-ongoing">
             <button onclick="sendCommand('refinement.globalRefine')">全局精化</button>
@@ -94,12 +85,6 @@
                     renderButtonBar(moduleStatus);                      // 根据模块状态判断是否允许用户进行精化
                     renderChain(nodes);                                 // 渲染粒度历史
                     renderModuleChain(moduleSequence, currentModule);   // 渲染模块顺序
-                    break;
-                case 'toggleDebug':
-                    const debugSection = document.getElementById('debug-section');
-                    if (debugSection) {
-                        debugSection.style.display = msg.visible ? 'block' : 'none';
-                    }
                     break;
                 default:
                     console.error(`Invalid message type from backend: ${msg.type}`);
