@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import * as dotenv from 'dotenv'
+import * as dotenv from 'dotenv';
 import { AzureOpenAI } from 'openai';
-import path from 'path';
+import * as path from 'path';
+import * as fs from 'fs';
 
 dotenv.config();
 
@@ -95,29 +96,154 @@ export async function callOpenAIForJSON(
 }
 
 /**
+ * 获取依赖模块的代码内容
+ */
+async function getDependencyModulesCode(currentModulePath: string): Promise<string> {
+    try {
+        const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path');
+        if (!aiPath) {
+            console.log('[getDependencyModulesCode] AI路径未配置');
+            return '';
+        }
+
+        // 使用 path.relative 和 path.dirname 来安全地获取项目根路径
+        // currentModulePath 是模块目录，需要向上找到项目根目录
+        let projectRootPath = currentModulePath;
+        
+        // 向上查找，直到找到包含 leaf_modules.json 的目录
+        let foundLeafModules = false;
+        let searchDepth = 0;
+        const maxSearchDepth = 10; // 防止无限循环
+        
+        while (searchDepth < maxSearchDepth) {
+            const testPath = path.join(projectRootPath, 'leaf_modules.json');
+            if (fs.existsSync(testPath)) {
+                foundLeafModules = true;
+                break;
+            }
+            
+            const parentPath = path.dirname(projectRootPath);
+            if (parentPath === projectRootPath) {
+                // 已经到达根目录
+                break;
+            }
+            
+            projectRootPath = parentPath;
+            searchDepth++;
+        }
+
+        if (!foundLeafModules) {
+            console.log('[getDependencyModulesCode] 未找到leaf_modules.json文件，从', currentModulePath, '向上搜索');
+            return '';
+        }
+
+        const leafModulesPath = path.join(projectRootPath, 'leaf_modules.json');
+        
+        // 读取leaf_modules.json
+        const leafModulesContent = fs.readFileSync(leafModulesPath, 'utf-8');
+        const leafModules = JSON.parse(leafModulesContent);
+
+        // 获取当前模块名称 - 使用相对路径
+        const relativePath = path.relative(aiPath, currentModulePath);
+        const currentModuleName = relativePath.split(path.sep).join('.');
+
+        // 找到当前模块
+        const currentModule = leafModules.find((mod: any) => mod.module_name === currentModuleName);
+        if (!currentModule || !currentModule.dependencies || currentModule.dependencies.length === 0) {
+            console.log('[getDependencyModulesCode] 当前模块没有依赖或找不到模块:', currentModuleName);
+            return '';
+        }
+
+        console.log('[getDependencyModulesCode] 找到', currentModule.dependencies.length, '个依赖模块');
+
+        // 读取所有依赖模块的代码
+        let dependenciesCode = '';
+        for (const depModuleName of currentModule.dependencies) {
+            const depModulePath = path.join(aiPath, ...depModuleName.split('.'));
+            const depNodeJsonPath = path.join(depModulePath, 'node.json');
+
+            if (fs.existsSync(depNodeJsonPath)) {
+                const nodeData = JSON.parse(fs.readFileSync(depNodeJsonPath, 'utf-8'));
+                // 找到最新的活跃节点
+                const activeNode = nodeData.find((node: any) => node.isActive);
+                if (activeNode && activeNode.filePath && fs.existsSync(activeNode.filePath)) {
+                    const depCode = fs.readFileSync(activeNode.filePath, 'utf-8');
+                    dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
+                    console.log('[getDependencyModulesCode] 成功读取依赖模块:', depModuleName);
+                } else {
+                    console.log('[getDependencyModulesCode] 未找到依赖模块的活跃节点:', depModuleName);
+                }
+            } else {
+                console.log('[getDependencyModulesCode] 未找到依赖模块的node.json:', depNodeJsonPath);
+            }
+        }
+
+        return dependenciesCode;
+    } catch (error) {
+        console.error('[getDependencyModulesCode] 获取依赖模块代码失败:', error);
+        return '';
+    }
+}
+
+/**
  * 全局精化提示词 - 对伪代码的全局优化
  */
-export function getGlobalRefinePrompt(fileContent: string): { system: string; user: string } {
+export async function getGlobalRefinePrompt(fileContent: string, currentModulePath?: string): Promise<{ system: string; user: string }> {
     // 简单的启发式判断：如果去除首尾空格后以 '{' 开头，则视为 JSON 设计文档
     const isJsonDesign = fileContent.trim().startsWith('{');
 
+    // 获取依赖模块代码
+    let dependenciesCode = '';
+    if (currentModulePath) {
+        dependenciesCode = await getDependencyModulesCode(currentModulePath);
+    }
+
     if (isJsonDesign) {
-        // 针对 JSON 设计文档 -> 生成伪代码的 Prompt
-        return {
-            system: `你是一个资深的软件架构师和算法工程师。你的任务是将JSON格式的模块设计文档转换为高质量、结构清晰的伪代码。
+        // 针对 JSON 设计文档 -> 生成伪代码的 Prompt (使用json2pse_v1.md)
+        // 获取扩展根路径 - 使用__dirname向上查找
+        let extensionPath = __dirname;
+        while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
+            const parent = path.dirname(extensionPath);
+            if (parent === extensionPath) {
+                break;
+            }
+            extensionPath = parent;
+        }
+        
+        const json2psePromptPath = path.join(extensionPath, 'resources', 'prompts', 'json2pse_v1.md');
+        
+        const userPrompt = dependenciesCode 
+            ? `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n以下是该模块依赖的上游模块的伪代码实现，在生成目标模块伪代码时请参考这些依赖模块的函数签名和接口：${dependenciesCode}\n\n请直接返回伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
+            : `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n请直接返回伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+
+        if (!fs.existsSync(json2psePromptPath)) {
+            console.error('找不到json2pse_v1.md文件:', json2psePromptPath);
+            // 回退到简单的系统提示
+            return {
+                system: `你是一个资深的软件架构师和算法工程师。你的任务是将JSON格式的模块设计文档转换为高质量、结构清晰的伪代码。
 
 请遵循以下规则：
-1. **完整性**：生成的伪代码必须严格包含JSON设计文档中的所有信息，包括 \`internal_state\`（作为全局变量或类成员）、\`interfaces\` 中的所有逻辑描述。
-2. **逻辑转换**：将 \`description\` 中的自然语言逻辑步骤准确转换为算法步骤。
-3. **错误处理**：设计文档中提到的错误处理（如打印stderr、返回null）必须显式体现在伪代码中。
-4. **数据结构**：根据文档中的 Set、List 等类型，在伪代码中体现相应的数据结构操作。
-5. **命名规范**：保持设计文档中的变量名和函数名一致。
+1. **完整性**：生成的伪代码必须严格包含JSON设计文档中的所有信息。
+2. **逻辑转换**：将自然语言逻辑步骤准确转换为算法步骤。
+3. **错误处理**：设计文档中提到的错误处理必须显式体现在伪代码中。
+4. **依赖一致性**：在调用依赖模块时，必须参考提供的上游依赖模块的实际函数签名。
 
-重要：请直接返回生成的完整伪代码内容，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`python 等），不要添加任何额外的解释文本，只返回纯文本的伪代码。`,
-            user: `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n请直接返回伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
+重要：请直接返回生成的完整伪代码内容，不要使用markdown代码块标记，只返回纯文本的伪代码。`,
+                user: userPrompt
+            };
+        }
+        const json2psePrompt = fs.readFileSync(json2psePromptPath, 'utf-8');
+
+        return {
+            system: json2psePrompt,
+            user: userPrompt
         };
     } else {
         // 针对 现有伪代码 -> 优化的 Prompt (保持原有逻辑，稍作微调以适应不同输入风格)
+        const userPrompt = dependenciesCode
+            ? `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n**依赖模块的伪代码实现（这些模块已存在，不需要重新实现）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，在精化时只需调用它们，不要修改或重新实现这些依赖模块\n- 请仔细检查当前伪代码中调用依赖模块的地方，确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n- 如果发现调用不一致的地方，请修正\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
+            : `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+
         return {
             system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行全局精化，帮助改进其清晰性、逻辑性和完整性。
 
@@ -127,9 +253,10 @@ export function getGlobalRefinePrompt(fileContent: string): { system: string; us
 3. 结构完整性 - 检查是否有遗漏的步骤或分支
 4. 边界条件处理 - 确保处理了所有边界情况
 5. 变量和函数命名 - 确保名称清晰能够表达意图
+6. 依赖一致性 - 如果提供了依赖模块代码，确保调用依赖模块的函数名、参数和返回值与依赖模块的实际定义完全一致
 
 重要：请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`python 等），不要添加任何额外的格式化标记，只返回纯文本的伪代码内容。`,
-            user: `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
+            user: userPrompt
         };
     }
 }
@@ -137,12 +264,23 @@ export function getGlobalRefinePrompt(fileContent: string): { system: string; us
 /**
  * 局部精化提示词 - 对伪代码片段的局部优化
  */
-export function getLocalRefinePrompt(
+export async function getLocalRefinePrompt(
     fileContent: string,
     startLine: number,
     endLine: number,
-    selectedCode: string
-): { system: string; user: string } {
+    selectedCode: string,
+    currentModulePath?: string
+): Promise<{ system: string; user: string }> {
+    // 获取依赖模块代码
+    let dependenciesCode = '';
+    if (currentModulePath) {
+        dependenciesCode = await getDependencyModulesCode(currentModulePath);
+    }
+
+    const userPrompt = dependenciesCode
+        ? `文件完整内容如下：\n\n${fileContent}\n\n用户选中的待精化部分（第 ${startLine} - ${endLine} 行）：\n\n${selectedCode}\n\n**依赖模块的伪代码实现（这些模块已存在）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，不需要修改\n- 如果选中部分涉及调用依赖模块，请确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n\n请对选中部分进行精化，并返回修改后的**完整**伪代码内容。`
+        : `文件完整内容如下：\n\n${fileContent}\n\n用户选中的待精化部分（第 ${startLine} - ${endLine} 行）：\n\n${selectedCode}\n\n请对选中部分进行精化，并返回修改后的**完整**伪代码内容。`;
+
     return {
         system: `你是一个专业的伪代码审查专家。你的任务是对伪代码的特定部分进行局部精化，但必须返回**修改后的完整文件内容**。
 
@@ -150,18 +288,29 @@ export function getLocalRefinePrompt(
 1. **重点优化**：仅针对用户选中的部分（第 ${startLine} 到 ${endLine} 行）进行逻辑、清晰度和完整性的优化。
 2. **确保全局一致性**：如果局部修改影响了整体逻辑（如变量名变更、状态依赖、类型变更），请同步修改文件中的相关部分，确保整体逻辑自洽。
 3. **检查全局一致性**：检查代码是否本身存在一致性问题（如变量名冲突、状态依赖错误、类型不匹配），并进行相应修正。
-3. **保持原样**：除非为了满足上述第2点，否则**绝对不要**修改未选中部分的代码（包括缩进、注释等）。
-4. **完整输出**：请输出修改后的**完整伪代码内容**，不要只返回片段。
+4. **依赖一致性**：确保调用依赖模块的函数签名正确。
+5. **保持原样**：除非为了满足上述第2、3、4点，否则**绝对不要**修改未选中部分的代码（包括缩进、注释等）。
+6. **完整输出**：请输出修改后的**完整伪代码内容**，不要只返回片段。
 
 重要：请直接返回修改后的完整伪代码，不要使用markdown代码块标记（如 \`\`\`），只返回纯文本内容。`,
-        user: `文件完整内容如下：\n\n${fileContent}\n\n用户选中的待精化部分（第 ${startLine} - ${endLine} 行）：\n\n${selectedCode}\n\n请对选中部分进行精化，并返回修改后的**完整**伪代码内容。`    
+        user: userPrompt
     };
 } 
 
 /**
  * 代码生成提示词 - 从伪代码生成 Python 代码
  */
-export function getGenerateCodePrompt(fileContent: string, lastGranularity: string, language: string = 'python'): { system: string; user: string } {
+export async function getGenerateCodePrompt(fileContent: string, lastGranularity: string, language: string = 'python', currentModulePath?: string): Promise<{ system: string; user: string }> {
+    // 获取依赖模块代码
+    let dependenciesCode = '';
+    if (currentModulePath) {
+        dependenciesCode = await getDependencyModulesCode(currentModulePath);
+    }
+
+    const userPrompt = dependenciesCode
+        ? `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n**依赖模块代码（这些模块已经实现，请不要重新实现）**：${dependenciesCode}\n\n**重要提醒**：\n1. 上面列出的依赖模块已经存在并实现完毕，你只需要 import 它们并调用即可\n2. 请在生成的代码开头添加正确的 import 语句来导入这些依赖模块\n3. **绝对不要**在你生成的代码中重新定义或实现这些依赖模块的类和函数\n4. 调用依赖模块时，请使用它们在伪代码中显示的实际函数签名\n\n请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`
+        : `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。代码应完全对应伪代码的逻辑流程。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`;
+
     return {
         system: `你是一个专业的 ${language} 代码生成专家。你的任务是根据提供的伪代码生成可运行的 ${language} 代码。
 
@@ -172,8 +321,15 @@ export function getGenerateCodePrompt(fileContent: string, lastGranularity: stri
 4. 遵循该语言的最佳实践和代码规范
 5. 添加清晰的注释对应伪代码步骤
 
+**关于依赖模块的处理（非常重要）：**
+- 如果用户提供了依赖模块的代码实现，说明这些模块**已经存在**
+- **绝对不要重新实现**这些依赖模块的代码
+- 必须在代码开头使用 import 语句导入这些依赖模块
+- 调用依赖模块时，使用它们实际的类名和函数名
+- 例如：如果依赖模块是 cal.Core，应该写 "from Core import Core" 然后调用 "Core.add()"，而不是重新定义 Core 类
+
 重要：请直接返回生成的完整、可运行的 ${language} 代码，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`${language} 等），不要添加任何额外的格式化标记，只返回纯代码。`,
-        user: `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。代码应完全对应伪代码的逻辑流程。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`
+        user: userPrompt
     };
 }
 
