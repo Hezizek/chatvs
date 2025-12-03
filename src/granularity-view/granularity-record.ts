@@ -1,7 +1,9 @@
 // This module defines the data structure of granularity panel.
+import assert from 'assert'
 import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as path from 'path'
+import { ProjectHandler } from '../tools/project-handler'
 
 export interface GranularityNode {
     index: number,
@@ -12,21 +14,32 @@ export interface GranularityNode {
 }
 
 export class GranularityRecord {
-    private rootPath: string
     private nodes: GranularityNode[] = []
     private currentIndex: number = -1
 
     private _onDidChange = new vscode.EventEmitter<GranularityNode[]>()
     public readonly onDidChange = this._onDidChange.event
 
-    constructor(rootPath: string) { 
-        this.rootPath = rootPath 
+    // A tool to handle project-level operations.
+    public projectHandler: ProjectHandler
+
+    constructor(private rootPath: string) { 
         const jsonPath = path.join(rootPath, 'node.json')
         if (fs.existsSync(jsonPath)) {
             const data = fs.readFileSync(jsonPath, 'utf8')
             this.nodes = JSON.parse(data) as GranularityNode[]
             this.currentIndex = this.nodes.findIndex(node => node.isActive)
         }
+
+        // Contruct the project handler.
+        const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path')
+        assert(aiPath, 'AI 路径未配置，无法创建 ProjectHandler 实例。')
+        const shortParts = aiPath.split(path.sep).filter(Boolean)
+        const longParts = this.rootPath.split(path.sep).filter(Boolean)
+        this.projectHandler = new ProjectHandler(
+            longParts.slice(0, shortParts.length + 1).join(path.sep)
+        )
+
     }
 
     public getRootPath(): string {
