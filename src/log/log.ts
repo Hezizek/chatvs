@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
+import * as settings from '../settings/settings';
 
 interface LogData {
     operation: 
@@ -67,7 +68,7 @@ export async function startLogging(context : vscode.ExtensionContext) {
  * @param {Object} [data.additionalFields] - 可选的额外日志字段
  */
 export async function logInfo(data: LogData) {
-    let treeRoot = vscode.workspace.getConfiguration('ai').get('path') + '';
+    let treeRoot = settings.getAiPath();
     data.target = data.target
         .substring(treeRoot.length + 1)
         .replace(/\\/g, '.');
