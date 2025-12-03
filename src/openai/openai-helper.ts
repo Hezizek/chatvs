@@ -164,14 +164,32 @@ async function getDependencyModulesCode(currentModulePath: string): Promise<stri
 
             if (fs.existsSync(depNodeJsonPath)) {
                 const nodeData = JSON.parse(fs.readFileSync(depNodeJsonPath, 'utf-8'));
-                // 找到最新的活跃节点
-                const activeNode = nodeData.find((node: any) => node.isActive);
-                if (activeNode && activeNode.filePath && fs.existsSync(activeNode.filePath)) {
-                    const depCode = fs.readFileSync(activeNode.filePath, 'utf-8');
+                
+                // 找到最后一版伪代码：
+                // 1. 从后往前遍历历史记录
+                // 2. 跳过以 "generated_" 开头的实际代码文件
+                // 3. 找到第一个伪代码文件（通常是 .txt 或 .pseudo 文件）
+                let pseudocodeNode = null;
+                for (let i = nodeData.length - 1; i >= 0; i--) {
+                    const node = nodeData[i];
+                    if (node.filePath) {
+                        const fileName = path.basename(node.filePath);
+                        // 跳过生成的实际代码文件
+                        if (fileName.startsWith('generated_')) {
+                            continue;
+                        }
+                        // 找到伪代码文件
+                        pseudocodeNode = node;
+                        break;
+                    }
+                }
+                
+                if (pseudocodeNode && pseudocodeNode.filePath && fs.existsSync(pseudocodeNode.filePath)) {
+                    const depCode = fs.readFileSync(pseudocodeNode.filePath, 'utf-8');
                     dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
-                    console.log('[getDependencyModulesCode] 成功读取依赖模块:', depModuleName);
+                    console.log('[getDependencyModulesCode] 成功读取依赖模块的伪代码:', depModuleName, '文件:', path.basename(pseudocodeNode.filePath));
                 } else {
-                    console.log('[getDependencyModulesCode] 未找到依赖模块的活跃节点:', depModuleName);
+                    console.log('[getDependencyModulesCode] 未找到依赖模块的伪代码节点:', depModuleName);
                 }
             } else {
                 console.log('[getDependencyModulesCode] 未找到依赖模块的node.json:', depNodeJsonPath);
