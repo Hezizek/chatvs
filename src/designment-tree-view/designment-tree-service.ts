@@ -20,22 +20,20 @@ export async function createModule(
     const filePath = path.join(absolutePath, 'content.txt')
     // When adding a new leaf module, always initialize a json file with granularity zero.
     const jsonPath = path.join(absolutePath, 'node.json')
+    const designmentPath = path.join(absolutePath, 'designment_info.txt')
 
     try {
         fs.mkdirSync(absolutePath, { recursive: true })
-        if (!fs.existsSync(filePath)) { // test
-            fs.writeFileSync(filePath, content ? content : 'Empty content.', 'utf8')
-        }
+        fs.writeFileSync(filePath, content ? content : 'Empty content.', 'utf8')
 
         const firstGranulairty: GranularityNode = {
             index: 1,
             description: '粒度 0',
-            filePath: filePath,
-            isActive: true
+            filePath: designmentPath,
+            isActive: false
         }
 
-        if (!fs.existsSync(jsonPath))  // test
-            fs.writeFileSync(jsonPath, JSON.stringify([firstGranulairty], null, 4), 'utf8')
+        fs.writeFileSync(jsonPath, JSON.stringify([firstGranulairty], null, 4), 'utf8')
 
         // For now the parent is no longer a leaf, so delete its json file.
         if (parent.children.length === 0) {
@@ -70,8 +68,8 @@ export async function createProject(label: string) {
 
     try {
         fs.mkdirSync(absolutePath, { recursive: true })
-        if (!fs.existsSync(filePath)) 
-            fs.writeFileSync(filePath, 'Empty content.', 'utf8')
+        fs.writeFileSync(filePath, 'Empty content.', 'utf8')
+
     } catch (error) {
         vscode.window.showErrorMessage(`创建项目失败: ${error}`)
         throw error

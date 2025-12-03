@@ -3,7 +3,7 @@ import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as designmentService from './designment-tree-service'
 import { DesignmentTreeDataProvider, DirectoryNode } from './designment-tree-data-provider'
-import { doModuleDivision, getCommonDS, getLeafModules } from './designment-utils'
+import { doModuleDivision, getCommonDS, getLeafModules } from './designment-tree-utils'
 import { disposeCurrentRecordAndCloseWebview, openGranularityWebview } from '../granularity-view/create-granularity-panel'
 
 
