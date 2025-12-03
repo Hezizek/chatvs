@@ -404,9 +404,6 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				}
 				fs.writeFileSync(generatedFilePath, generatedCode, 'utf8')
 
-				const doc = await vscode.workspace.openTextDocument(generatedFilePath)
-				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
-
 				if (isCurrentRecordTarget(targetDir)) {
                     const index = currentRecord.getCurrentIndex();
                     currentRecord.addRecord(generatedFilePath, '粒度'+(index+1));
@@ -415,6 +412,9 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     updateRecordInBackground(targetDir, generatedFilePath );
                     console.log(`后台更新了 ${targetDir} 的粒度记录`);
                 }
+
+                const doc = await vscode.workspace.openTextDocument(generatedFilePath)
+				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
 
 				vscode.window.showInformationMessage(`代码已生成，文件已保存: ${path.basename(generatedFilePath)}`);
 

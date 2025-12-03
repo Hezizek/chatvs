@@ -3,7 +3,9 @@ import assert from 'assert'
 import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as settings from '../settings/settings'
 import { ProjectHandler } from '../tools/project-handler'
+
 
 export interface GranularityNode {
     index: number,
@@ -32,7 +34,7 @@ export class GranularityRecord {
         }
 
         // Contruct the project handler.
-        const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path')
+        const aiPath = settings.getAiPath()
         assert(aiPath, 'AI 路径未配置，无法创建 ProjectHandler 实例。')
         const shortParts = aiPath.split(path.sep).filter(Boolean)
         const longParts = this.rootPath.split(path.sep).filter(Boolean)
@@ -117,7 +119,7 @@ export class GranularityRecord {
         try {
             if (filePath && fs.existsSync(filePath)) {
                 const fileName = path.basename(filePath)
-                const backupDir = path.join(this.rootPath, 'backup')
+                const backupDir = path.join(this.rootPath, '_backup')
 
                 if (!fs.existsSync(backupDir)) {
                     fs.mkdirSync(backupDir, { recursive: true })
