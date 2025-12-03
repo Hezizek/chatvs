@@ -153,7 +153,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
             try {
                 const fileContent = editor.document.getText()
-                const prompt = openaiHelper.getGlobalRefinePrompt(fileContent)
+                const prompt = await openaiHelper.getGlobalRefinePrompt(fileContent, targetDir)
                 
                 // 这里会耗时很久，期间 currentRecord 可能会变
                 const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
@@ -211,7 +211,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const startLine = selection.start.line + 1 
                 const endLine = selection.end.line + 1
 
-                const prompt = openaiHelper.getLocalRefinePrompt(fileContent, startLine, endLine, selectedCode)
+                const prompt = await openaiHelper.getLocalRefinePrompt(fileContent, startLine, endLine, selectedCode, targetDir)
 
                 const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
                 const refinedContent = cleanLLMResponse(result)
@@ -393,7 +393,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				const fileContent = editor.document.getText()
 				const currentNode = currentRecord.getCurrentNode()
 				const lastGranularity = currentNode ? currentNode.description : '';
-				const prompt = openaiHelper.getGenerateCodePrompt(fileContent, lastGranularity, language);
+				const prompt = await openaiHelper.getGenerateCodePrompt(fileContent, lastGranularity, language, targetDir);
 				const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user);
 				const generatedCode = cleanLLMResponse(result);
 				const timestamp = Date.now();
