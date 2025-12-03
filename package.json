@@ -106,7 +106,7 @@
       {
         "command": "CodeToolBox.createModule",
         "title": "创建子模块",
-        "icon": "images/add-leaf.svg",
+        "icon": "images/add-module.svg",
         "enablement": "CodeToolBox.enableCreateModule"
       },
       {
