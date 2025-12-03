@@ -129,16 +129,54 @@ export async function doModuleDivision(
         return
     }
 
+    const pendingRenames: { src: string, dest: string }[] = [];
+    const tempFilesToDelete: string[] = [];
+
+    const stageJsonWrite = (targetPath: string, data: any) => {
+        const tempPath = `${targetPath}.tmp.${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf8');
+        tempFilesToDelete.push(tempPath); // 注册以便出错时清理
+        pendingRenames.push({ src: tempPath, dest: targetPath }); // 注册待提交的操作
+    }
+
     try {
         // 如果不是第一层，现在划分成功了，才从叶子节点列表中移除“父模块”
         if (!isFirstLevel) {
             const rawModuleName = path.dirname(path.relative(aiPath, currentContentPath))
             const currentModuleName = rawModuleName.split(path.sep).join('.')
             ongoingLeafModules = ongoingLeafModules.filter((mod: any) => mod.name !== currentModuleName)
+
+            // 更新依赖模块
+            const newModuleNames = result.map((m: any) => m.name)
+            // 使用 Map 记录受影响模块以去重
+            const affectedModules = new Map<string, any>();
+
+            const updateDependencies = (modulesList: any[]) => {
+                modulesList.forEach((mod: any) => {
+                    if (mod.dependencies && Array.isArray(mod.dependencies) && mod.dependencies.includes(currentModuleName)) {
+                        mod.dependencies = mod.dependencies.filter((d: string) => d !== currentModuleName)
+                        newModuleNames.forEach((newName: string) => {
+                            if (!mod.dependencies.includes(newName)) {
+                                mod.dependencies.push(newName)
+                            }
+                        })
+                        affectedModules.set(mod.name, mod);
+                    }
+                })
+            }
+            updateDependencies(ongoingLeafModules)
+            updateDependencies(allModules)
+            // 预写入受影响的 content.txt
+            affectedModules.forEach((mod, modName) => {
+                const modRelPath = modName.split('.').join(path.sep)
+                const modContentPath = path.join(aiPath, modRelPath, 'content.txt')
+                
+                if (fs.existsSync(modContentPath)) {
+                    stageJsonWrite(modContentPath, mod);
+                }
+            })
         }
-
         result.forEach((module: any) => {
-
             allModules.push(module)
             ongoingLeafModules.push(module)
 
@@ -149,12 +187,30 @@ export async function doModuleDivision(
             )
         })
 
-        writeJsonAtomically(modulesPath, allModules)
-        writeJsonAtomically(ongoingLeafModulesPath, ongoingLeafModules)
+        stageJsonWrite(modulesPath, allModules)
+        stageJsonWrite(ongoingLeafModulesPath, ongoingLeafModules)
+
+        pendingRenames.forEach(op => {
+            try {
+                fs.renameSync(op.src, op.dest)
+            } catch (renameError) {
+                // 极端情况下的重命名失败 (如文件占用)
+                console.error(`Commit failed for ${op.dest}:`, renameError)
+                throw renameError
+            }
+        });
 
     } catch (error) {
-        vscode.window.showErrorMessage(`保存模块数据时发生错误: ${error}`)
-        console.error(error)
+        console.error('Transaction failed, rolling back temp files...', error);
+        
+        // 清理所有创建的临时文件
+        tempFilesToDelete.forEach(p => { 
+            if (fs.existsSync(p)) {
+                try { fs.unlinkSync(p); } catch(e) {}
+            } 
+        });
+
+        vscode.window.showErrorMessage(`保存模块数据时发生错误，已终止操作以保护数据一致性: ${error}`)
     }
 }
 
