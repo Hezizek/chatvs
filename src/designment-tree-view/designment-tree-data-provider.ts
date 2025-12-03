@@ -1,5 +1,6 @@
 import * as vscode from 'vscode'
 import * as path from 'path'
+import { getlocalNodeTree } from './designment-tree-persistence'
 
 export enum NodeType {
     Project,
@@ -111,7 +112,9 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
 
     private static instance: DesignmentTreeDataProvider | null = null
 
-    private constructor() {}
+    private constructor() {
+        this.localNodeTree = getlocalNodeTree()
+    }
 
     public static getInstance(): DesignmentTreeDataProvider {
         if (!this.instance) {

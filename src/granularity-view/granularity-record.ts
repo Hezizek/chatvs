@@ -117,7 +117,7 @@ export class GranularityRecord {
         try {
             if (filePath && fs.existsSync(filePath)) {
                 const fileName = path.basename(filePath)
-                const backupDir = path.join(this.rootPath, 'backup')
+                const backupDir = path.join(this.rootPath, '_backup')
 
                 if (!fs.existsSync(backupDir)) {
                     fs.mkdirSync(backupDir, { recursive: true })
