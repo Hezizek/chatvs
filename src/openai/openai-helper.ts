@@ -241,7 +241,7 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
     } else {
         // 针对 现有伪代码 -> 优化的 Prompt (保持原有逻辑，稍作微调以适应不同输入风格)
         const userPrompt = dependenciesCode
-            ? `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n以下是该模块依赖的上游模块的伪代码实现，在精化时请确保调用依赖模块的函数签名和接口保持一致：${dependenciesCode}\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
+            ? `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n**依赖模块的伪代码实现（这些模块已存在，不需要重新实现）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，在精化时只需调用它们，不要修改或重新实现这些依赖模块\n- 请仔细检查当前伪代码中调用依赖模块的地方，确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n- 如果发现调用不一致的地方，请修正\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
             : `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
 
         return {
@@ -253,7 +253,7 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
 3. 结构完整性 - 检查是否有遗漏的步骤或分支
 4. 边界条件处理 - 确保处理了所有边界情况
 5. 变量和函数命名 - 确保名称清晰能够表达意图
-6. 依赖一致性 - 确保调用依赖模块的函数签名正确
+6. 依赖一致性 - 如果提供了依赖模块代码，确保调用依赖模块的函数名、参数和返回值与依赖模块的实际定义完全一致
 
 重要：请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`python 等），不要添加任何额外的格式化标记，只返回纯文本的伪代码内容。`,
             user: userPrompt
@@ -278,7 +278,7 @@ export async function getLocalRefinePrompt(
     }
 
     const userPrompt = dependenciesCode
-        ? `文件完整内容如下：\n\n${fileContent}\n\n用户选中的待精化部分（第 ${startLine} - ${endLine} 行）：\n\n${selectedCode}\n\n以下是该模块依赖的上游模块的伪代码实现，在精化时请确保调用依赖模块的函数签名和接口保持一致：${dependenciesCode}\n\n请对选中部分进行精化，并返回修改后的**完整**伪代码内容。`
+        ? `文件完整内容如下：\n\n${fileContent}\n\n用户选中的待精化部分（第 ${startLine} - ${endLine} 行）：\n\n${selectedCode}\n\n**依赖模块的伪代码实现（这些模块已存在）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，不需要修改\n- 如果选中部分涉及调用依赖模块，请确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n\n请对选中部分进行精化，并返回修改后的**完整**伪代码内容。`
         : `文件完整内容如下：\n\n${fileContent}\n\n用户选中的待精化部分（第 ${startLine} - ${endLine} 行）：\n\n${selectedCode}\n\n请对选中部分进行精化，并返回修改后的**完整**伪代码内容。`;
 
     return {
@@ -308,7 +308,7 @@ export async function getGenerateCodePrompt(fileContent: string, lastGranularity
     }
 
     const userPrompt = dependenciesCode
-        ? `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n以下是该模块依赖的上游模块的伪代码实现，在生成代码时请确保调用依赖模块的函数签名和接口保持一致：${dependenciesCode}\n\n请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。代码应完全对应伪代码的逻辑流程。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`
+        ? `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n**依赖模块代码（这些模块已经实现，请不要重新实现）**：${dependenciesCode}\n\n**重要提醒**：\n1. 上面列出的依赖模块已经存在并实现完毕，你只需要 import 它们并调用即可\n2. 请在生成的代码开头添加正确的 import 语句来导入这些依赖模块\n3. **绝对不要**在你生成的代码中重新定义或实现这些依赖模块的类和函数\n4. 调用依赖模块时，请使用它们在伪代码中显示的实际函数签名\n\n请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`
         : `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。代码应完全对应伪代码的逻辑流程。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`;
 
     return {
@@ -320,7 +320,13 @@ export async function getGenerateCodePrompt(fileContent: string, lastGranularity
 3. 添加必要的错误处理和边界检查
 4. 遵循该语言的最佳实践和代码规范
 5. 添加清晰的注释对应伪代码步骤
-6. 确保调用依赖模块的函数签名正确
+
+**关于依赖模块的处理（非常重要）：**
+- 如果用户提供了依赖模块的代码实现，说明这些模块**已经存在**
+- **绝对不要重新实现**这些依赖模块的代码
+- 必须在代码开头使用 import 语句导入这些依赖模块
+- 调用依赖模块时，使用它们实际的类名和函数名
+- 例如：如果依赖模块是 cal.Core，应该写 "from Core import Core" 然后调用 "Core.add()"，而不是重新定义 Core 类
 
 重要：请直接返回生成的完整、可运行的 ${language} 代码，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`${language} 等），不要添加任何额外的格式化标记，只返回纯代码。`,
         user: userPrompt
