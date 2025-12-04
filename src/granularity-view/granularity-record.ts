@@ -30,7 +30,6 @@ export class GranularityRecord {
         if (fs.existsSync(jsonPath)) {
             const data = fs.readFileSync(jsonPath, 'utf8')
             this.nodes = JSON.parse(data) as GranularityNode[]
-            this.currentIndex = this.nodes.findIndex(node => node.isActive)
         }
 
         // Contruct the project handler.
@@ -149,6 +148,7 @@ export class GranularityRecord {
     // 替换全局唯一 Record 或插件关闭时手动调用
     public dispose() {
         const jsonPath = path.join(this.rootPath, 'node.json')
+        this.nodes.forEach(node => node.isActive = false)
         fs.writeFileSync(jsonPath, JSON.stringify(this.nodes, null, 4), 'utf8')
     }
 }

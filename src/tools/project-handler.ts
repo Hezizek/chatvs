@@ -70,7 +70,6 @@ export class ProjectHandler {
         }
     }
 
-
     // TODO: more methods to handle project files.
     
 }

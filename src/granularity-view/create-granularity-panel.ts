@@ -445,6 +445,7 @@ export function openGranularityWebview(rootPath: string) {
     }
 
     currentRecord = new GranularityRecord(rootPath)
+    
     currentRecord.onDidChange(async ( nodes: GranularityNode[] ) => {
 
         // Inform the webview to update UI.

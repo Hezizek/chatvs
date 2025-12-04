@@ -262,12 +262,24 @@ export async function getLeafModules(
         const resultString = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
         const result = JSON.parse(resultString.replace(/```json/g, '').replace(/```/g, '').trim())
 
-        result.forEach((item: any, index: any) => {
-            item.status = index === 0 ? 'ongoing' : 'pending';
-        });
-
         // Currently, we assume that the topology sequence is fixed after designment stage.
         const sortedResult = topoSortLeafModules(result)
+
+        result.forEach((item: any, index: any) => {
+            item.status = index === 0 ? 'ongoing' : 'pending'
+
+            // Write the designment information to each leaf module.
+            const aiPath = settings.getAiPath()
+            const filePath = path.join(
+                aiPath,
+                item.module_name.replace(/\./g, path.sep),
+                'designment_info.txt'
+            )
+            
+            if (!fs.existsSync(filePath)) {
+                fs.writeFileSync(filePath, JSON.stringify(item, null, 4), 'utf8')
+            }
+        })
 
         const leafModulesPath = path.join(projectPath, 'leaf_modules.json')
         
