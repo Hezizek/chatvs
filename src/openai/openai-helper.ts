@@ -97,8 +97,10 @@ export async function callOpenAIForJSON(
 
 /**
  * 获取依赖模块的代码内容
+ * @param currentModulePath 当前模块路径
+ * @param codeType 'pseudocode' 返回伪代码，'actual' 返回实际代码
  */
-async function getDependencyModulesCode(currentModulePath: string): Promise<string> {
+async function getDependencyModulesCode(currentModulePath: string, codeType: 'pseudocode' | 'actual' = 'pseudocode'): Promise<string> {
     try {
         const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path');
         if (!aiPath) {
@@ -165,31 +167,40 @@ async function getDependencyModulesCode(currentModulePath: string): Promise<stri
             if (fs.existsSync(depNodeJsonPath)) {
                 const nodeData = JSON.parse(fs.readFileSync(depNodeJsonPath, 'utf-8'));
                 
-                // 找到最后一版伪代码：
-                // 1. 从后往前遍历历史记录
-                // 2. 跳过以 "generated_" 开头的实际代码文件
-                // 3. 找到第一个伪代码文件（通常是 .txt 或 .pseudo 文件）
-                let pseudocodeNode = null;
-                for (let i = nodeData.length - 1; i >= 0; i--) {
-                    const node = nodeData[i];
-                    if (node.filePath) {
-                        const fileName = path.basename(node.filePath);
-                        // 跳过生成的实际代码文件
-                        if (fileName.startsWith('generated_')) {
-                            continue;
+                let targetNode = null;
+                
+                if (codeType === 'actual') {
+                    // 查找最新的实际代码：从后往前找第一个 generated_ 开头的文件
+                    for (let i = nodeData.length - 1; i >= 0; i--) {
+                        const node = nodeData[i];
+                        if (node.filePath) {
+                            const fileName = path.basename(node.filePath);
+                            if (fileName.startsWith('generated_')) {
+                                targetNode = node;
+                                break;
+                            }
                         }
-                        // 找到伪代码文件
-                        pseudocodeNode = node;
-                        break;
+                    }
+                } else {
+                    // 查找最后一版伪代码：从后往前找第一个不是 generated_ 开头的文件
+                    for (let i = nodeData.length - 1; i >= 0; i--) {
+                        const node = nodeData[i];
+                        if (node.filePath) {
+                            const fileName = path.basename(node.filePath);
+                            if (!fileName.startsWith('generated_')) {
+                                targetNode = node;
+                                break;
+                            }
+                        }
                     }
                 }
                 
-                if (pseudocodeNode && pseudocodeNode.filePath && fs.existsSync(pseudocodeNode.filePath)) {
-                    const depCode = fs.readFileSync(pseudocodeNode.filePath, 'utf-8');
+                if (targetNode && targetNode.filePath && fs.existsSync(targetNode.filePath)) {
+                    const depCode = fs.readFileSync(targetNode.filePath, 'utf-8');
                     dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
-                    console.log('[getDependencyModulesCode] 成功读取依赖模块的伪代码:', depModuleName, '文件:', path.basename(pseudocodeNode.filePath));
+                    console.log(`[getDependencyModulesCode] 成功读取依赖模块的${codeType === 'actual' ? '实际代码' : '伪代码'}:`, depModuleName, '文件:', path.basename(targetNode.filePath));
                 } else {
-                    console.log('[getDependencyModulesCode] 未找到依赖模块的伪代码节点:', depModuleName);
+                    console.log(`[getDependencyModulesCode] 未找到依赖模块的${codeType === 'actual' ? '实际代码' : '伪代码'}节点:`, depModuleName);
                 }
             } else {
                 console.log('[getDependencyModulesCode] 未找到依赖模块的node.json:', depNodeJsonPath);
@@ -213,7 +224,7 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
     // 获取依赖模块代码
     let dependenciesCode = '';
     if (currentModulePath) {
-        dependenciesCode = await getDependencyModulesCode(currentModulePath);
+        dependenciesCode = await getDependencyModulesCode(currentModulePath,'pseudocode');
     }
 
     if (isJsonDesign) {
@@ -292,7 +303,7 @@ export async function getLocalRefinePrompt(
     // 获取依赖模块代码
     let dependenciesCode = '';
     if (currentModulePath) {
-        dependenciesCode = await getDependencyModulesCode(currentModulePath);
+        dependenciesCode = await getDependencyModulesCode(currentModulePath,'pseudocode');
     }
 
     const userPrompt = dependenciesCode
@@ -319,10 +330,10 @@ export async function getLocalRefinePrompt(
  * 代码生成提示词 - 从伪代码生成 Python 代码
  */
 export async function getGenerateCodePrompt(fileContent: string, lastGranularity: string, language: string = 'python', currentModulePath?: string): Promise<{ system: string; user: string }> {
-    // 获取依赖模块代码
+    // 获取依赖模块代码 - 代码生成时需要实际代码
     let dependenciesCode = '';
     if (currentModulePath) {
-        dependenciesCode = await getDependencyModulesCode(currentModulePath);
+        dependenciesCode = await getDependencyModulesCode(currentModulePath, 'actual');
     }
 
     const userPrompt = dependenciesCode
