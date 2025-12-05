@@ -17,8 +17,7 @@
             <button onclick="sendCommand('refinement.localRefine')">局部精化</button>
             <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
             <button onclick="sendGenerateCommand()">生成代码</button>
-            <select id="language-select"
-                style="padding: 5px; border-radius: 2px; border: 1px solid var(--vscode-dropdown-border); background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground);">
+            <select id="language-select" title="选择语言" class="language-select">
                 <option value="python">Python</option>
                 <option value="java">Java</option>
                 <option value="c++">C++</option>
