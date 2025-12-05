@@ -3,6 +3,8 @@ import * as dotenv from 'dotenv';
 import { AzureOpenAI } from 'openai';
 import * as path from 'path';
 import * as fs from 'fs';
+import { z } from 'zod';
+import { validateWithSchema } from './schemas';
 
 dotenv.config();
 
@@ -60,39 +62,103 @@ async function initializeOpenAI(): Promise<AzureOpenAI> {
 }
 
 /**
- * 调用 OpenAI 生成结构化输出（JSON 格式）
+ * 调用 OpenAI 生成结构化输出（JSON 格式），支持 Schema 验证和自动重试
  * @param systemPrompt 系统提示词
  * @param userPrompt 用户提示词
+ * @param schema 可选的 Zod schema，用于验证返回的 JSON
+ * @param maxRetries 最大重试次数，默认 3 次
  * @returns 生成的文本内容
  */
-export async function callOpenAIForJSON(
+export async function callOpenAIForJSON<T = any>(
     systemPrompt: string,
-    userPrompt: string
+    userPrompt: string,
+    schema?: z.ZodSchema<T>,
+    maxRetries: number = 3
 ): Promise<string> {
-    try {
-        const client = await initializeOpenAI();
+    let lastError: any = null;
+    let modifiedUserPrompt = userPrompt;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            const client = await initializeOpenAI();
 
-        const response = await client.chat.completions.create({
-            model: 'gpt-35-turbo',
-            messages: [
-                {
-                    role: 'system',
-                    content: systemPrompt
-                },
-                {
-                    role: 'user',
-                    content: userPrompt
+            const response = await client.chat.completions.create({
+                model: 'gpt-35-turbo',
+                messages: [
+                    {
+                        role: 'system',
+                        content: systemPrompt
+                    },
+                    {
+                        role: 'user',
+                        content: modifiedUserPrompt
+                    }
+                ],
+                temperature: 0.7,
+                max_tokens: 1024*8
+            });
+
+            const content = response.choices[0]?.message?.content || '';
+            
+            // 如果没有提供 schema，直接返回
+            if (!schema) {
+                return content;
+            }
+            
+            // 清理 JSON，移除可能的 markdown 标记
+            const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
+            
+            // 尝试解析 JSON
+            let parsedData: any;
+            try {
+                parsedData = JSON.parse(cleanJson);
+            } catch (parseError) {
+                console.error(`[callOpenAIForJSON] JSON 解析失败 (第 ${attempt + 1} 次尝试):`, parseError);
+                lastError = new Error(`JSON 解析失败: ${parseError}`);
+                
+                // 如果不是最后一次尝试，继续重试
+                if (attempt < maxRetries - 1) {
+                    console.log(`[callOpenAIForJSON] 将在下次尝试中要求 LLM 返回有效的 JSON`);
+                    // 更新 userPrompt 以强调返回有效 JSON
+                    modifiedUserPrompt += `\n\n注意：上一次返回的内容不是有效的 JSON 格式。请确保返回严格符合 JSON 标准的内容，不要包含任何额外的文本或格式标记。`;
+                    continue;
                 }
-            ],
-            temperature: 0.7,
-            max_tokens: 1024*8
-        });
-
-        return response.choices[0]?.message?.content || '';
-    } catch (error) {
-        vscode.window.showErrorMessage(`OpenAI API 调用失败: ${error}`);
-        throw error;
+                throw lastError;
+            }
+            
+            // 使用 schema 验证
+            const validationResult = validateWithSchema(schema, parsedData);
+            
+            if (validationResult.success) {
+                console.log(`[callOpenAIForJSON] Schema 验证通过 (第 ${attempt + 1} 次尝试)`);
+                return content;
+            } else {
+                console.error(`[callOpenAIForJSON] Schema 验证失败 (第 ${attempt + 1} 次尝试):`, validationResult.errors);
+                lastError = new Error(`Schema 验证失败: ${validationResult.errors.join('; ')}`);
+                
+                // 如果不是最后一次尝试，继续重试并提供错误信息
+                if (attempt < maxRetries - 1) {
+                    console.log(`[callOpenAIForJSON] 将在下次尝试中修正验证错误`);
+                    // 更新 userPrompt 以包含验证错误信息
+                    modifiedUserPrompt += `\n\n注意：上一次返回的 JSON 不符合要求。验证错误：${validationResult.errors.join('; ')}。请修正这些问题并重新生成。`;
+                    continue;
+                }
+                throw lastError;
+            }
+        } catch (error) {
+            lastError = error;
+            console.error(`[callOpenAIForJSON] 调用失败 (第 ${attempt + 1} 次尝试):`, error);
+            
+            // 如果是最后一次尝试或者是 API 错误（非验证错误），直接抛出
+            if (attempt === maxRetries - 1 || (error instanceof Error && error.message.includes('API'))) {
+                vscode.window.showErrorMessage(`OpenAI API 调用失败: ${error}`);
+                throw error;
+            }
+        }
     }
+    
+    // 理论上不会到这里，但为了类型安全
+    throw lastError || new Error('未知错误');
 }
 
 /**
