@@ -132,6 +132,11 @@
         "command": "CodeToolBox.getLeafModules",
         "title": "结束设计阶段",
         "enablement": "viewItem =~ /designmentCompletable/"
+      },
+      {
+        "command": "CodeToolBox.extractProject", 
+        "title": "提取项目 (Python)",
+        "icon": "images/export.svg"
       }
     ],
     "keybindings": [
@@ -221,6 +226,11 @@
       ],
       "comments/commentThread/context": [],
       "view/item/context": [
+        {
+          "command": "CodeToolBox.extractProject",
+          "when": "view == CodeToolBox.chatGPTView && viewItem =~ /project/",
+          "group": "3_code_generation@1"
+        },
         {
           "command": "CodeToolBox.deleteNode",
           "when": "view == CodeToolBox.chatGPTView && (viewItem =~ /module/ || viewItem =~ /project/)",

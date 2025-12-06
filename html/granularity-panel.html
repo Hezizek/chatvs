@@ -103,6 +103,8 @@
                 const nodeDiv = document.createElement('div');
                 nodeDiv.className = 'module-node'; // 使用新的 CSS 类
 
+                nodeDiv.title = moduleName;
+
                 nodeDiv.innerHTML = `<div class="node-desc">${escapeHtml(moduleName)}</div>`;
 
                 // 高亮当前模块
