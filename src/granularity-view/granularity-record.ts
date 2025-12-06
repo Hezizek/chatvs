@@ -34,7 +34,6 @@ export class GranularityRecord {
 
         // Contruct the project handler.
         const aiPath = settings.getAiPath()
-        assert(aiPath, 'AI 路径未配置，无法创建 ProjectHandler 实例。')
         const shortParts = aiPath.split(path.sep).filter(Boolean)
         const longParts = this.rootPath.split(path.sep).filter(Boolean)
         this.projectHandler = new ProjectHandler(
@@ -105,10 +104,7 @@ export class GranularityRecord {
 
             this.nodes = this.nodes.slice(0, index + 1)
             this.currentIndex = index
-            
-            if (this.nodes[this.currentIndex]) {
-                this.nodes[this.currentIndex].isActive = true
-            }
+            this.nodes[this.currentIndex].isActive = true
 
             this.fireUpdate()
         }

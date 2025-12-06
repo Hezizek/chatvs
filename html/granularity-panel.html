@@ -81,7 +81,7 @@
             switch (msg.type) {
                 case 'updateView':
                     const { nodes, moduleSequence, currentModule, moduleStatus } = msg.data;
-                    renderButtonBar(moduleStatus);                      // 根据模块状态判断是否允许用户进行精化
+                    renderButtonBar(nodes, moduleStatus);                      // 根据模块状态判断是否允许用户进行精化
                     renderChain(nodes);                                 // 渲染粒度历史
                     renderModuleChain(moduleSequence, currentModule);   // 渲染模块顺序
                     break;
@@ -177,27 +177,39 @@
             });
         }
 
-        function renderButtonBar(moduleStatus) {
-            switch (moduleStatus) {
-                case 'completed':
-                    buttonBarOngoing.style.display = 'none';
-                    buttonBarCompleted.style.display = 'flex';
-                    buttonBarPending.style.display = 'none';
-                    break;
-                case 'ongoing':
-                    buttonBarOngoing.style.display = 'flex';
-                    buttonBarCompleted.style.display = 'none';
-                    buttonBarPending.style.display = 'none';
-                    break;
-                case 'pending':
-                    buttonBarOngoing.style.display = 'none';
-                    buttonBarCompleted.style.display = 'none';
-                    buttonBarPending.style.display = 'block';
-                    buttonBarPending.textContent = 'Please refine preceding modules first.'
-                    break;
-                default:
-                    console.error(`Invalid module status from backend: ${moduleStatus}.`);
+        function renderButtonBar(nodes, moduleStatus) {
+            // If no active node, hide all buttons.
+            const hasActive = nodes.some(node => node.isActive);
+
+            if (!hasActive) {
+                updateButtonBar('none', 'none', 'block');
+                buttonBarPending.textContent = 'No selected granularity.';
+                return;
             }
+
+            const displayMap = {
+                'ongoing':      ['flex', 'none', 'none'],
+                'completed':    ['none', 'flex', 'none'],
+                'pending':      ['none', 'none', 'block']
+            };
+
+            const cfg = displayMap[moduleStatus]
+            if (!cfg) {
+                console.error(`Invalid module status from backend: ${moduleStatus}.`);
+                return;
+            } 
+            
+            updateButtonBar(cfg[0], cfg[1], cfg[2]);
+
+            if (moduleStatus === 'pending') {
+                buttonBarPending.textContent = 'Please refine preceding modules first.';
+            }
+        }
+
+        function updateButtonBar(ongoingBarState, completedBarState, pendingBarState) {
+            buttonBarOngoing.style.display = ongoingBarState;
+            buttonBarCompleted.style.display = completedBarState;
+            buttonBarPending.style.display = pendingBarState;
         }
 
         // 简单的 HTML 转义函数，防止描述中包含 < > 等特殊字符破坏布局

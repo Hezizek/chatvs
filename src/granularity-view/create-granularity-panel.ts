@@ -312,62 +312,48 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     context.subscriptions.push(
 		vscode.commands.registerCommand('refinement.rollback', async () => {
             
-			if (currentRecord) {
-                const currentIndex = currentRecord.getCurrentIndex()
+            assert(currentRecord, '当前没有活动的粒度记录，无法回退。')
 
-			    if (currentIndex < 0) {
-				    vscode.window.showWarningMessage('您还没有选择要回退到的粒度。')
-				    return
-			    }
+            const currentIndex = currentRecord.getCurrentIndex()
 
-			    currentRecord.backTo(currentIndex)
-			    vscode.window.showInformationMessage(`当前模块已回退至粒度 ${currentIndex}。`)
+			if (currentIndex < 0) {
+				vscode.window.showWarningMessage('您还没有选择要回退到的粒度。')
+				return
+			}
 
-                const aiPath = settings.getAiPath();
-                const rootPath = currentRecord.getRootPath();
+			currentRecord.backTo(currentIndex)
+			vscode.window.showInformationMessage(`当前模块已回退至粒度 ${currentIndex}。`)
+
+            const aiPath = settings.getAiPath()
+            const rootPath = currentRecord.getRootPath()
                 
-                if (aiPath) {
-                    try {
-                        const relativePath = path.relative(aiPath, rootPath);
-                        const currentModuleName = relativePath.split(path.sep).join('/');
-                        const sequence = currentRecord.projectHandler.getLeafModuleSequence();
-                        const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName);
+            try {
+                const relativePath = path.relative(aiPath, rootPath)
+                const currentModuleName = relativePath.split(path.sep).join('.')
+                const sequence = currentRecord.projectHandler.getLeafModuleSequence()
+                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
 
-                        if (seqIndex !== -1 && seqIndex < sequence.length - 1) {
+                if (seqIndex !== -1 && seqIndex < sequence.length - 1) {
                             
-                            const laterModules = sequence.slice(seqIndex + 1);
+                    const laterModules = sequence.slice(seqIndex + 1)
                             
-                            for (const moduleName of laterModules) {
-                                const moduleFullPath = path.join(aiPath, moduleName.relativePath);
-                                const jsonPath = path.join(moduleFullPath, 'node.json');
+                    for (const moduleName of laterModules) {
 
-                                if (fs.existsSync(jsonPath)) {
-                                    try {
-                                        const tempRecord = new GranularityRecord(moduleFullPath);
+                        const moduleFullPath = path.join(aiPath, moduleName.relativePath.split('.').join(path.sep))
+                        const tempRecord = new GranularityRecord(moduleFullPath);
                                         
-                                        tempRecord.backTo(0);
-                                        tempRecord.dispose();
-
-                                        console.log(`[Cascade Reset] 已重置模块: ${moduleName}`);
-
-                                    } catch (e) {
-                                        console.error(`重置模块 ${moduleName} 失败:`, e);
-                                    }
-                                }
-                            }
-                            
-                            vscode.window.showInformationMessage(`已级联重置后续 ${laterModules.length} 个模块的历史。`);
-                        }
-
-                        // Synchronize seq.json file.
-                        // Needs refactoring.
-                        currentRecord.projectHandler.setOnGoingModule(seqIndex);
-                        currentRecord.fireUpdate();
-
-                    } catch (error) {
-                        console.error('级联重置失败:', error);
+                        tempRecord.backTo(0);
+                        tempRecord.dispose();
                     }
                 }
+
+                // Synchronize seq.json file.
+                // Needs refactoring.
+                currentRecord.projectHandler.setOnGoingModule(seqIndex)
+                currentRecord.fireUpdate()
+
+            } catch (error) {
+                console.error('级联重置失败:', error)
             }
 		})
 	)
