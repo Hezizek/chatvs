@@ -265,7 +265,7 @@ export async function getLeafModules(
         // Currently, we assume that the topology sequence is fixed after designment stage.
         const sortedResult = topoSortLeafModules(result)
 
-        result.forEach((item: any, index: any) => {
+        sortedResult.forEach((item: any, index: any) => {
             item.status = index === 0 ? 'ongoing' : 'pending'
 
             // Write the designment information to each leaf module.
