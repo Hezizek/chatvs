@@ -3,13 +3,18 @@ import { z } from 'zod';
 /**
  * 模块划分的基础 Schema
  * 用于模块划分 API 返回的 JSON 验证
- * 匹配 prompts/非碎片化模块划分.md 中定义的 JSON 格式
+ * 匹配 prompts/非碎片化模块划分.md 和 prompts/子模块划分.md 中定义的 JSON 格式
+ * 
+ * 必需字段：
+ * - name: 模块的全限定名 (PascalCase)，如：a.b
+ * - description: 用简练中文描述核心功能和行为
+ * - dependencies: 依赖的模块名称列表，无依赖填空数组 []
  */
 export const ModuleSchema = z.object({
-    name: z.string().min(1, "模块名称不能为空"),
-    description: z.string().min(1, "模块描述不能为空"),  // 必需字段
-    dependencies: z.array(z.string()).optional().default([]),  // 依赖模块列表，可选
-}).passthrough();  // 允许额外字段，兼容性更好
+    name: z.string().min(1, "模块名称(name)不能为空"),
+    description: z.string().min(1, "模块描述(description)不能为空"),
+    dependencies: z.array(z.string()).default([]),  // 依赖模块列表，默认为空数组
+});
 
 /**
  * 模块数组 Schema
@@ -18,13 +23,34 @@ export const ModuleSchema = z.object({
 export const ModulesArraySchema = z.array(ModuleSchema).min(1, "至少需要一个模块");
 
 /**
- * 叶子模块 Schema (宽松版本，暂时不做严格验证)
- * 包含更详细的设计信息
+ * 接口定义 Schema
+ * 用于叶子模块中的 interfaces 字段
+ */
+const InterfaceSchema = z.object({
+    name: z.string().min(1, "接口名称(name)不能为空"),
+    params: z.string().min(1, "参数列表(params)不能为空"),
+    return_type: z.string().min(1, "返回值类型(return_type)不能为空"),
+    description: z.string().min(1, "接口描述(description)不能为空，必须包含详细的逻辑步骤"),
+});
+
+/**
+ * 叶子模块 Schema (严格版本)
+ * 匹配 prompts/所有叶子节点生成提示词.md 中定义的 JSON 格式
+ * 
+ * 必需字段：
+ * - module_name: 模块的全限定名 (PascalCase)，如：a.b.c
+ * - dependencies: 依赖模块名列表
+ * - local_variable: 模块内部持有的私有变量/状态列表
+ * - interfaces: 函数接口定义数组
+ * - entry_point_logic: 仅驱动模块填写，普通模块填 null
  */
 export const LeafModuleSchema = z.object({
-    module_name: z.string().min(1, "模块名称不能为空"),
-    // 其他字段都是可选的，使用 passthrough 允许任意额外字段
-}).passthrough();
+    module_name: z.string().min(1, "模块名称(module_name)不能为空"),
+    dependencies: z.array(z.string()).default([]),
+    local_variable: z.array(z.string()).default([]),
+    interfaces: z.array(InterfaceSchema).default([]),
+    entry_point_logic: z.union([z.string(), z.null()]).nullable(),
+});
 
 /**
  * 叶子模块数组 Schema
@@ -32,12 +58,30 @@ export const LeafModuleSchema = z.object({
 export const LeafModulesArraySchema = z.array(LeafModuleSchema).min(1, "至少需要一个叶子模块");
 
 /**
- * 通用数据结构 Schema (简化版)
+ * 数据结构属性 Schema
+ * 用于通用数据结构中的 attributes 字段
+ */
+const AttributeSchema = z.object({
+    name: z.string().min(1, "属性名称(name)不能为空"),
+    description: z.string().min(1, "属性描述(description)不能为空"),
+});
+
+/**
+ * 通用数据结构 Schema (严格版本)
+ * 匹配 prompts/通用数据结构提示词.md 中定义的 JSON 格式
+ * 
+ * 必需字段：
+ * - name: 数据结构名称 (PascalCase)
+ * - definition: 简短描述
+ * - main_users: 使用该数据的模块名称列表
+ * - attributes: 属性列表，每个属性包含 name 和 description
  */
 export const DataStructureSchema = z.object({
-    name: z.string().min(1, "数据结构名称不能为空"),
-    // 其他字段都是可选的
-}).passthrough();
+    name: z.string().min(1, "数据结构名称(name)不能为空"),
+    definition: z.string().min(1, "数据结构定义(definition)不能为空"),
+    main_users: z.array(z.string()).default([]),
+    attributes: z.array(AttributeSchema).min(1, "至少需要一个属性(attributes)"),
+});
 
 /**
  * 通用数据结构数组 Schema
