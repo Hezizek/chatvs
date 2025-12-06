@@ -280,6 +280,7 @@
     "vscode-webview-tool": "^1.0.4",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "yarn": "^1.22.22"
+    "yarn": "^1.22.22",
+    "zod": "^3.25.76"
   }
 }

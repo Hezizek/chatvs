@@ -6,6 +6,7 @@ import { topoSortLeafModules } from '../tools/module-topology-util'
 import * as designmentService from './designment-tree-service'
 import * as openaiHelper from '../openai/openai-helper'
 import * as settings from '../settings/settings'
+import { ModulesArraySchema, LeafModulesArraySchema, DataStructuresArraySchema, validateModulePrefix } from '../openai/schemas'
 
 function writeJsonAtomically(filePath: string, data: any) {
     const tempPath = `${filePath}.tmp.${Date.now()}`
@@ -99,21 +100,24 @@ export async function doModuleDivision(
         }
 
         try {
-            const resultString = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
+            // 使用 schema 验证，callOpenAIForJSON 内部会自动重试
+            const resultString = await openaiHelper.callOpenAIForJSON(
+                prompt.system, 
+                prompt.user,
+                ModulesArraySchema,
+                3
+            )
             const cleanJson = resultString.replace(/```json/g, '').replace(/```/g, '').trim()
             result = JSON.parse(cleanJson)
 
-            if (result && Array.isArray(result) && result.length > 0) {
-                // 校验：所有新模块名必须以 "父模块名." 开头
-                const allNamesValid = result.every((mod: any) => {
-                    return mod.name && mod.name.toString().startsWith(expectedPrefix)
-                })
-
-                if (allNamesValid) {
-                    isValidResult = true
-                } else {
-                    console.warn(`[ModuleDivision] 校验失败: 存在模块名不符合前缀规范 "${expectedPrefix}"`)
-                }
+            // 额外的前缀校验
+            const prefixValidation = validateModulePrefix(result, expectedPrefix)
+            if (prefixValidation.valid) {
+                isValidResult = true
+            } else {
+                console.warn(`[ModuleDivision] 校验失败: 存在模块名不符合前缀规范 "${expectedPrefix}"，不符合的模块: ${prefixValidation.invalidModules.join(', ')}`)
+                // 更新 prompt，让 LLM 知道问题
+                prompt.user += `\n\n注意：以下模块名称不符合要求，必须以 "${expectedPrefix}" 开头: ${prefixValidation.invalidModules.join(', ')}。请修正。`
             }
         } catch (e) {
             console.error(`[ModuleDivision] 解析或调用出错 (Attempt ${retryCount + 1}):`, e)
@@ -224,7 +228,12 @@ export async function getCommonDS(
     const prompt = await openaiHelper.getCommonDSPrompt(ongoingLeafModulesPath, requirementsPath, context)
     
     try {
-        const resultString = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
+        const resultString = await openaiHelper.callOpenAIForJSON(
+            prompt.system, 
+            prompt.user,
+            DataStructuresArraySchema,
+            3
+        )
         const result = JSON.parse(resultString.replace(/```json/g, '').replace(/```/g, '').trim())
 
         const dsPath = path.join(projectPath, 'common_data_structures.json')
@@ -259,7 +268,11 @@ export async function getLeafModules(
     const prompt = await openaiHelper.getLeafModules(ongoingLeafModulesPath, requirementsPath, commonDSPath, context)
     
     try {
-        const resultString = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
+        const resultString = await openaiHelper.callOpenAIForJSON(
+            prompt.system, 
+            prompt.user
+            // 暂时不使用 schema 验证
+        )
         const result = JSON.parse(resultString.replace(/```json/g, '').replace(/```/g, '').trim())
 
         // Currently, we assume that the topology sequence is fixed after designment stage.
