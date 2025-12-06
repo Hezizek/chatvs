@@ -132,6 +132,11 @@
         "command": "CodeToolBox.getLeafModules",
         "title": "结束设计阶段",
         "enablement": "viewItem =~ /designmentCompletable/"
+      },
+      {
+        "command": "CodeToolBox.extractProject", 
+        "title": "提取项目 (Python)",
+        "icon": "images/export.svg"
       }
     ],
     "keybindings": [
@@ -222,6 +227,11 @@
       "comments/commentThread/context": [],
       "view/item/context": [
         {
+          "command": "CodeToolBox.extractProject",
+          "when": "view == CodeToolBox.chatGPTView && viewItem =~ /project/",
+          "group": "3_code_generation@1"
+        },
+        {
           "command": "CodeToolBox.deleteNode",
           "when": "view == CodeToolBox.chatGPTView && (viewItem =~ /module/ || viewItem =~ /project/)",
           "group": "2_human_design@2"
@@ -280,6 +290,7 @@
     "vscode-webview-tool": "^1.0.4",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0",
-    "yarn": "^1.22.22"
+    "yarn": "^1.22.22",
+    "zod": "^3.25.76"
   }
 }
