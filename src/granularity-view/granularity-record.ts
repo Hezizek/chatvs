@@ -66,6 +66,7 @@ export class GranularityRecord {
 
         this.nodes.push(newNode)
         this.currentIndex = this.nodes.length - 1
+        this.saveToDisk()
 
         if (show) {
             this.fireUpdate();
@@ -77,6 +78,7 @@ export class GranularityRecord {
         if (index >= 0 && index < this.nodes.length) {
             this.nodes.forEach((node, i) => node.isActive = (i === index))
             this.currentIndex = index
+            this.saveToDisk()
             this.fireUpdate()
             return this.nodes[index]
         }
@@ -105,7 +107,8 @@ export class GranularityRecord {
             this.nodes = this.nodes.slice(0, index + 1)
             this.currentIndex = index
             this.nodes[this.currentIndex].isActive = true
-
+            this.saveToDisk()
+            
             this.fireUpdate()
         }
     }
@@ -140,11 +143,15 @@ export class GranularityRecord {
     public fireUpdate() {
         this._onDidChange.fire(this.nodes)
     }
+    public saveToDisk() {
+        const jsonPath = path.join(this.rootPath, 'node.json')
+        fs.writeFileSync(jsonPath, JSON.stringify(this.nodes, null, 4), 'utf8')
+    }
 
     // 替换全局唯一 Record 或插件关闭时手动调用
     public dispose() {
-        const jsonPath = path.join(this.rootPath, 'node.json')
         this.nodes.forEach(node => node.isActive = false)
-        fs.writeFileSync(jsonPath, JSON.stringify(this.nodes, null, 4), 'utf8')
+        // [修改] 调用新增的保存逻辑
+        this.saveToDisk()
     }
 }
