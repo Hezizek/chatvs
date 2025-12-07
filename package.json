@@ -107,26 +107,37 @@
         "command": "CodeToolBox.createModule",
         "title": "创建子模块",
         "icon": "images/add-module.svg",
-        "enablement": "CodeToolBox.enableCreateModule"
+        "enablement": "CodeToolBox.enableCreateModule && !CodeToolBox.isTaskRunning"
       },
       {
         "command": "CodeToolBox.createProj",
         "title": "创建项目",
-        "icon": "images/add-proj.svg"
+        "icon": "images/add-proj.svg",
+        "enablement": "!CodeToolBox.isTaskRunning"
       },
       {
-        "command": "CodeToolBox.deleteNode",
-        "title": "删除节点"
+        "command": "CodeToolBox.deleteModule",
+        "title": "删除节点",
+        "enablement": "!(viewItem =~ /fixed/)"
+      },
+      {
+        "command": "CodeToolBox.deleteProject",
+        "title": "删除项目"
       },
       {
         "command": "CodeToolBox.divideModule",
         "title": "划分子模块",
-        "enablement": "viewItem =~ /dividable/"
+        "enablement": "viewItem =~ /leaf/ && !(viewItem =~ /fixed/)"
+      },
+      {
+        "command": "CodeToolBox.firstDivision",
+        "title": "初始模块划分",
+        "enablement": "viewItem =~ /empty/"
       },
       {
         "command": "CodeToolBox.extractCommonDataStructure",
         "title": "提取通用数据结构",
-        "enablement": "viewItem =~ /dataStructureAddable/"
+        "enablement": "viewItem =~ /dataStructureExtractable/"
       },
       {
         "command": "CodeToolBox.getLeafModules",
@@ -135,7 +146,8 @@
       },
       {
         "command": "CodeToolBox.extractProject", 
-        "title": "提取项目 (Python)"
+        "title": "提取项目 (Python)",
+        "enablement": "viewItem =~ /designmentCompleted/"
       }
     ],
     "keybindings": [
@@ -227,28 +239,38 @@
       "view/item/context": [
         {
           "command": "CodeToolBox.extractProject",
-          "when": "view == CodeToolBox.chatGPTView && viewItem =~ /project/",
+          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /project/",
           "group": "3_code_generation@1"
         },
         {
-          "command": "CodeToolBox.deleteNode",
-          "when": "view == CodeToolBox.chatGPTView && (viewItem =~ /module/ || viewItem =~ /project/)",
+          "command": "CodeToolBox.deleteModule",
+          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /module/",
+          "group": "2_human_design@1"
+        },
+        {
+          "command": "CodeToolBox.deleteProject",
+          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /project/",
           "group": "2_human_design@2"
         },
         {
           "command": "CodeToolBox.extractCommonDataStructure",
-          "when": "view == CodeToolBox.chatGPTView && viewItem =~ /project/",
+          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /project/",
+          "group": "1_ai_design@2"
+        },
+        {
+          "command": "CodeToolBox.firstDivision",
+          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /project/",
           "group": "1_ai_design@1"
         },
         {
           "command": "CodeToolBox.divideModule",
-          "when": "view == CodeToolBox.chatGPTView && (viewItem =~ /module/ || viewItem =~ /project/)",
-          "group": "1_ai_design@1"
+          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /module/",
+          "group": "1_ai_design@4"
         },
         {
           "command": "CodeToolBox.getLeafModules",
-          "when": "view == CodeToolBox.chatGPTView && viewItem =~ /project/",
-          "group": "1_ai_design@2"
+          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /project/",
+          "group": "1_ai_design@3"
         }
       ]
     }

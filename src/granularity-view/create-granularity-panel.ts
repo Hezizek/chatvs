@@ -278,6 +278,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 		vscode.commands.registerCommand('refinement.generateCode', async (payload) => {
 
             assert(currentRecord, '当前没有活动的粒度记录，无法生成代码。');
+            const targetRecord = currentRecord
 
 			const editor = vscode.window.activeTextEditor
 			if (!editor) {
@@ -285,15 +286,15 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				return
 			}
 
-            const targetDir = path.dirname(editor.document.fileName);
+            const targetDir = targetRecord.getRootPath();
             const language = payload && payload.language ? payload.language : 'python';
             const fileSuffix = getSrcFileSuffix(language) || '.txt';
 
-			vscode.window.showInformationMessage(`正在生成 ${language} 代码，请稍候...`)
+			vscode.window.showInformationMessage(`正在生成 ${language} 代码...`)
 
 			try {
 				const fileContent = editor.document.getText()
-				const currentNode = currentRecord.getCurrentNode()
+				const currentNode = targetRecord.getCurrentNode()
 				const lastGranularity = currentNode ? currentNode.description : '';
 				const prompt = await openaiHelper.getGenerateCodePrompt(fileContent, lastGranularity, language, targetDir);
 				const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user);
@@ -306,14 +307,8 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				}
 				fs.writeFileSync(generatedFilePath, generatedCode, 'utf8')
 
-				if (isCurrentRecordTarget(targetDir)) {
-                    const index = currentRecord.getCurrentIndex();
-                    currentRecord.addRecord(generatedFilePath, '粒度'+(index+1));
-                } else {
-                    
-                    updateRecordInBackground(targetDir, generatedFilePath );
-                    console.log(`后台更新了 ${targetDir} 的粒度记录`);
-                }
+                const index = targetRecord.getCurrentIndex()
+                targetRecord.addRecord(generatedFilePath, '粒度'+(index+1), false)
 
                 const doc = await vscode.workspace.openTextDocument(generatedFilePath)
 				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
@@ -321,15 +316,13 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				vscode.window.showInformationMessage(`代码已生成，文件已保存: ${path.basename(generatedFilePath)}`);
 
                 // Synchronize seq.json file.
-                // Get index of current module.
-                // Needs refactoring.
-                const rootPath = currentRecord.getRootPath();
-                const relativePath = path.relative(settings.getAiPath(), rootPath);
-                const currentModuleName = relativePath.split(path.sep).join('.');
-                const sequence = currentRecord.projectHandler.getLeafModuleSequence();
-                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName);
-                currentRecord.projectHandler.setOnGoingModule(seqIndex + 1);
-                currentRecord.fireUpdate();
+                const relativePath = path.relative(settings.getAiPath(), targetDir)
+                const currentModuleName = relativePath.split(path.sep).join('.')
+                const sequence = targetRecord.projectHandler.getLeafModuleSequence()
+                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
+                targetRecord.projectHandler.setOnGoingModule(seqIndex + 1)
+                currentRecord = targetRecord
+                currentRecord.fireUpdate()
 
 			} catch (err) {
 				vscode.window.showErrorMessage(`代码生成失败: ${err}`)
