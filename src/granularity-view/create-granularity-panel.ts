@@ -3,10 +3,11 @@ import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as Diff from 'diff'
+import * as settings from '../settings/settings'
 import * as openaiHelper from '../openai/openai-helper'
+import { GranularityViewProvider } from './granularity-view-provider'
 import { GranularityNode, GranularityRecord } from './granularity-record'
 import { getSrcFileSuffix } from '../tools/lang-util'
-import * as settings from '../settings/settings'
 
 export let currentRecord: GranularityRecord | null = null
 
@@ -16,92 +17,7 @@ const refineHighlightType = vscode.window.createTextEditorDecorationType({
     overviewRulerColor: new vscode.ThemeColor('diffEditor.insertedTextOverviewRuler'),
     overviewRulerLane: vscode.OverviewRulerLane.Right,
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
-});
-
-class GranularityViewProvider implements vscode.WebviewViewProvider {
-    public static currentView: vscode.WebviewView | undefined
-    private readonly _extensionUri: vscode.Uri
-
-    constructor(extensionUri: vscode.Uri) {
-        this._extensionUri = extensionUri
-    }
-
-    public resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        context: vscode.WebviewViewResolveContext,
-        token: vscode.CancellationToken
-    ): Thenable<void> | void {
-
-        GranularityViewProvider.currentView = webviewView
-        webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this._extensionUri]
-        }
-
-        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview)
-
-        webviewView.webview.onDidReceiveMessage(async data => {
-            switch (data.type) {
-                case 'executeCommand':
-                    if (data.commandId === 'refinement.switchModule') {
-                        const moduleName = data.payload.moduleName;
-                        const aiPath = settings.getAiPath();
-                        
-                        if (moduleName) {
-                            const modulePath = path.join(aiPath, moduleName.replace(/\./g, path.sep));
-                            const moduleContentPath = path.join(modulePath, 'content.txt');
-                            if (fs.existsSync(moduleContentPath)) {
-                                try {
-
-                                    const doc = await vscode.workspace.openTextDocument(moduleContentPath);
-                                    await vscode.window.showTextDocument(doc);
-                                    openGranularityWebview(modulePath);
-                                } catch (e) {
-                                    vscode.window.showErrorMessage(`无法打开模块 ${moduleName}: ${e}`);
-                                }
-                            } else {
-                                vscode.window.showWarningMessage(`未找到模块文件: ${moduleContentPath}`);
-                            }
-                        }
-                        return;
-                    }
-
-                    vscode.commands.executeCommand(data.commandId, data.payload)
-                    return
-
-                case 'webviewReady':
-                    if (currentRecord) {
-                        currentRecord.fireUpdate()
-                    }
-            }
-        })
-    }
-
-    public static postMessage(message: any) {
-        if (GranularityViewProvider.currentView) {
-            GranularityViewProvider.currentView.webview.postMessage(message)
-        }
-    }
-
-    private _getHtmlForWebview(webview: vscode.Webview): string {
-
-        const styleUri = vscode.Uri.joinPath(
-            this._extensionUri,
-            'html',
-            'granularity-panel.css'
-        )
-        
-        const htmlUri = vscode.Uri.joinPath(
-            this._extensionUri,
-            'html',
-            'granularity-panel.html'
-        )
-
-        let html = fs.readFileSync(htmlUri.fsPath, 'utf8')
-        const webviewUri = webview.asWebviewUri(styleUri)
-        return html.replace('{{styleUri}}', webviewUri.toString())
-    }
-}
+})
 
 // 增加一个辅助函数，用于处理后台更新
 function updateRecordInBackground(
@@ -140,7 +56,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     )
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('refinement.globalRefine', async (payload) => {
+        vscode.commands.registerCommand('refinement.globalRefine', async () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) {
                 vscode.window.showWarningMessage('请打开一个文件夹进行全局精化')

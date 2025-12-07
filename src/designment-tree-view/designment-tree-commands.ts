@@ -5,7 +5,7 @@ import * as designmentService from './designment-tree-service'
 import { DesignmentTreeDataProvider, DirectoryNode } from './designment-tree-data-provider'
 import { doModuleDivision, getCommonDS, getLeafModules } from './designment-tree-utils'
 import { disposeCurrentRecordAndCloseWebview, openGranularityWebview } from '../granularity-view/create-granularity-panel'
-import { extractProject } from '../tools/project-extractor'; // [新增]
+import { extractProject } from '../tools/project-extractor';
 
 
 export async function createTreeView(context: vscode.ExtensionContext) {
@@ -15,24 +15,6 @@ export async function createTreeView(context: vscode.ExtensionContext) {
             openChatGPTView(context)
         })
     )
-    context.subscriptions.push(
-        vscode.commands.registerCommand('CodeToolBox.extractProject', async (node: DirectoryNode) => {
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: '正在提取项目...',
-                cancellable: false
-            }, async () => {
-                try {
-                    // 目前硬编码为 Python
-                    await extractProject(node.absolutePath, 'python');
-                    vscode.window.showInformationMessage('项目提取成功，请查看输出文件夹。');
-                } catch (error) {
-                    vscode.window.showErrorMessage(`项目提取失败: ${error}`);
-                    console.error('Failed to extract project: ', error);
-                }
-            })
-        })
-    );
 }
 
 
@@ -186,6 +168,25 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     } catch (error) {
                         vscode.window.showErrorMessage('获取叶子模块失败。')
                         console.error('Failed to get leaf modules: ', error)
+                    }
+                })
+            })
+        )
+
+        context.subscriptions.push(
+            vscode.commands.registerCommand('CodeToolBox.extractProject', async (node: DirectoryNode) => {
+                await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: '正在提取项目...',
+                    cancellable: false
+                }, async () => {
+                    try {
+                        // Currently hard-coded as python.
+                        await extractProject(node.absolutePath, 'python')
+                        vscode.window.showInformationMessage('项目提取成功！')
+                    } catch (error) {
+                        vscode.window.showErrorMessage(`项目提取失败。`)
+                        console.error('Failed to extract project: ', error)
                     }
                 })
             })

@@ -135,8 +135,7 @@
       },
       {
         "command": "CodeToolBox.extractProject", 
-        "title": "提取项目 (Python)",
-        "icon": "images/export.svg"
+        "title": "提取项目 (Python)"
       }
     ],
     "keybindings": [
