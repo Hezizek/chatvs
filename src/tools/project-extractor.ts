@@ -1,3 +1,4 @@
+// src/tools/project-extractor.ts
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -30,20 +31,36 @@ export async function extractProject(projectRootPath: string, language: string =
         throw new Error(`不支持的语言: ${language}`);
     }
 
-    // 创建输出目录
-    const projectBaseName = path.basename(projectRootPath);
-    const outputDirName = `${projectBaseName}_${language}_extracted`;
-    const outputProjectPath = path.join(path.dirname(projectRootPath), outputDirName);
+    // 1. 提示用户选择目标保存目录
+    const selectedUris = await vscode.window.showOpenDialog({
+        canSelectFolders: true,
+        canSelectFiles: false,
+        canSelectMany: false,
+        openLabel: '选择保存目录',
+        title: '选择提取出的项目要保存的目录 (将在此目录下创建项目文件夹)'
+    });
+
+    if (!selectedUris || selectedUris.length === 0) {
+        throw new Error('用户取消了目录选择。');
+    }
     
+    const destinationBaseDir = selectedUris[0].fsPath;
+    const projectBaseName = path.basename(projectRootPath);
+    
+    // 2. 构造最终项目路径，**不加后缀**
+    const outputProjectPath = path.join(destinationBaseDir, projectBaseName);
+    
+    // 3. 检查目标项目目录是否存在并提示覆盖
     if (fs.existsSync(outputProjectPath)) {
         const result = await vscode.window.showWarningMessage(
-            `输出目录 ${outputDirName} 已存在。是否覆盖？`,
+            `目标目录 ${projectBaseName} 已存在于所选路径。是否覆盖其内容？`,
             { modal: true }, 
             '覆盖', 
             '取消'
         );
         
         if (result === '覆盖') {
+            // 删除已存在的文件夹内容
             fs.rmSync(outputProjectPath, { recursive: true, force: true });
         } else {
             throw new Error('用户取消操作。');
@@ -52,16 +69,21 @@ export async function extractProject(projectRootPath: string, language: string =
 
     fs.mkdirSync(outputProjectPath, { recursive: true });
     
-    // 遍历叶子模块，复制最新生成的代码
+    // 4. 遍历叶子模块，复制最新生成的代码
     for (const module of leafModules) {
-        // 模块目录在 AI Path 中的绝对路径
-        const moduleDir = path.join(projectRootPath, ...module.relativePath.split('.').slice(1)); // 去掉项目名作为顶级目录
-
-        // node.json 路径
+        // 模块相对路径转为 parts: "ProjectName.Module.Submodule" -> ['ProjectName', 'Module', 'Submodule']
+        const relativeModuleParts = module.relativePath.split('.');
+        if (relativeModuleParts.length < 2) continue;
+        
+        // 模块目录在 CodeSketcher 存储路径中的绝对路径
+        // e.g., AI_PATH/ProjectName/Module/Submodule
+        const moduleDir = path.join(projectRootPath, ...relativeModuleParts.slice(1)); 
+        
         const nodeJsonPath = path.join(moduleDir, 'node.json');
 
         if (!fs.existsSync(nodeJsonPath)) {
-            throw new Error(`模块 ${module.relativePath} 缺少 node.json 文件。`);
+            console.warn(`模块 ${module.relativePath} 缺少 node.json 文件。`);
+            continue;
         }
 
         const nodeData: GranularityNode[] = JSON.parse(fs.readFileSync(nodeJsonPath, 'utf8'));
@@ -72,14 +94,15 @@ export async function extractProject(projectRootPath: string, language: string =
         );
 
         if (!latestCodeNode) {
-            throw new Error(`模块 ${module.relativePath} 未找到最新生成的 ${language} 代码。`);
+            console.error(`模块 ${module.relativePath} 未找到最新生成的 ${language} 代码。`);
+            continue;
         }
 
         const sourceFilePath = latestCodeNode.filePath;
         
-        // 模块相对路径转为文件路径: project.module.sub -> module/sub.py
-        const relativeModulePath = module.relativePath.split('.').slice(1).join(path.sep);
-        const destinationFilePath = path.join(outputProjectPath, relativeModulePath + srcSuffix);
+        // 模块相对路径转为文件路径: ProjectName.Module.Submodule -> Module/Submodule.py
+        const relativeCodePath = relativeModuleParts.slice(1).join(path.sep);
+        const destinationFilePath = path.join(outputProjectPath, relativeCodePath + srcSuffix);
 
         // 确保目标目录存在
         const destinationDir = path.dirname(destinationFilePath);
@@ -109,11 +132,14 @@ export async function extractProject(projectRootPath: string, language: string =
         fs.copyFileSync(reqPath, path.join(outputProjectPath, 'project_requirements.txt'));
     }
 
-    // 提示用户
-    vscode.window.showInformationMessage(`项目提取成功！代码已保存至：${outputProjectPath}`, '打开文件夹').then(selection => {
-        if (selection === '打开文件夹') {
+    // 5. 提示用户
+    vscode.window.showInformationMessage(`项目提取成功！代码已保存至：${outputProjectPath}`, '在新窗口中打开').then(selection => {
+        if (selection === '在新窗口中打开') {
+            // [核心修复] 使用 vscode.Uri.file() 将文件系统路径转换为正确的 URI 格式
+            const projectUri = vscode.Uri.file(outputProjectPath);
+            
             // 打开新的项目文件夹
-            vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(outputProjectPath), true);
+            vscode.commands.executeCommand('vscode.openFolder', projectUri, true); //
         }
     });
 }
