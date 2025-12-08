@@ -1,5 +1,4 @@
 // This module defines the data structure of granularity panel.
-import assert from 'assert'
 import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -48,11 +47,12 @@ export class GranularityRecord {
     }
 
     // Add a new node at the end of current node list.
-    public addRecord(filePath: string, description: string, show: boolean = true, highlightRanges?: { start: number, end: number }[]) {
-        if (this.currentIndex < this.nodes.length - 1) {
-            this.nodes = this.nodes.slice(0, this.currentIndex + 1)
-        }
-
+    public appendNode(
+        filePath: string,
+        description: string,
+        show: boolean = true,
+        highlightRanges?: { start: number, end: number }[]
+    ): void {
         const newNode: GranularityNode = {
             index: this.nodes.length + 1,
             description,
@@ -75,7 +75,7 @@ export class GranularityRecord {
     }
 
     // Switch to specific node.
-    public switchTo(index: number) {
+    public switchTo(index: number): GranularityNode | undefined {
         if (index >= 0 && index < this.nodes.length) {
             this.nodes.forEach((node, i) => node.isActive = (i === index))
             this.currentIndex = index
@@ -90,12 +90,13 @@ export class GranularityRecord {
         return this.currentIndex
     }
 
-    public getCurrentNode() {
-        return this.nodes[this.currentIndex]
+    public getLastNode(): GranularityNode {
+        const length: number = this.nodes.length
+        return this.nodes[length - 1]
     }
 
     // Rollback to the active node and delete all the nodes after it.
-    public backTo(index: number) {
+    public backTo(index: number, show: boolean) {
         if (index >= 0 && index < this.nodes.length - 1) {
             const nodesToRemove = this.nodes.slice(index + 1)
 
@@ -110,7 +111,9 @@ export class GranularityRecord {
             this.nodes[this.currentIndex].isActive = true
             this.saveToDisk()
             
-            this.fireUpdate()
+            if (show) {
+                this.fireUpdate()
+            }
         }
     }
 
@@ -144,6 +147,7 @@ export class GranularityRecord {
     public fireUpdate() {
         this._onDidChange.fire(this.nodes)
     }
+
     public saveToDisk() {
         const jsonPath = path.join(this.rootPath, 'node.json')
         fs.writeFileSync(jsonPath, JSON.stringify(this.nodes, null, 4), 'utf8')

@@ -8,6 +8,7 @@ import * as openaiHelper from '../openai/openai-helper'
 import { GranularityViewProvider } from './granularity-view-provider'
 import { GranularityNode, GranularityRecord } from './granularity-record'
 import { getSrcFileSuffix } from '../tools/lang-util'
+import { cleanLLMResponse, getHumanJsonPath, LineData } from './granularity-view-utils'
 
 export let currentRecord: GranularityRecord | null = null
 
@@ -18,23 +19,6 @@ const refineHighlightType = vscode.window.createTextEditorDecorationType({
     overviewRulerLane: vscode.OverviewRulerLane.Right,
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
 })
-
-// 增加一个辅助函数，用于处理后台更新
-function updateRecordInBackground(
-    rootPath: string,
-    filePath: string,
-    highlightRanges?: { start: number, end: number }[]
-) {
-    const tempRecord = new GranularityRecord(rootPath);
-    const index = tempRecord.getCurrentIndex();
-    tempRecord.addRecord(filePath, '粒度'+(index+1), false, highlightRanges);
-    tempRecord.dispose();
-}   
-
-function isCurrentRecordTarget(targetDir: string): boolean {
-    if (!currentRecord) return false;
-    return path.relative(currentRecord.getRootPath(), targetDir) === '';
-}
 
 
 // Invoked in activation function.
@@ -57,38 +41,38 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
     context.subscriptions.push(
         vscode.commands.registerCommand('refinement.globalRefine', async () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor) {
-                vscode.window.showWarningMessage('请打开一个文件夹进行全局精化')
-                return
-            }
 
-            const targetDir = path.dirname(editor.document.fileName);
+            assert(currentRecord, 'No usable record for granularity panel.')
+            const targetRecord: GranularityRecord = currentRecord
 
             vscode.window.showInformationMessage('正在执行全局精化...')
 
             try {
-                const fileContent = editor.document.getText()
-                const prompt = await openaiHelper.getGlobalRefinePrompt(fileContent, targetDir)
+                const rootPath = targetRecord.getRootPath()
+                const lastNode = targetRecord.getLastNode()
+                const targetFilePath = lastNode.filePath
+                const fileContent = fs.readFileSync(targetFilePath, 'utf8')
+
+                const prompt = await openaiHelper.getGlobalRefinePrompt(fileContent, rootPath)
                 
-                // 这里会耗时很久，期间 currentRecord 可能会变
+                // It will take long here, where currentRecord may change.
                 const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
+
                 const timestamp = Date.now()
-                
-                // 使用之前捕获的 targetDir，而不是重新获取 editor.document (因为 editor 可能也切走了)
-                const refinedFilePath = path.join(targetDir, `pseudotrans_global_refined_${timestamp}.txt`)
+                const generatedFilePath = path.join(rootPath, `pseudotrans_global_refined_${timestamp}.txt`)
             
-                fs.writeFileSync(refinedFilePath, result, 'utf8')
+                fs.writeFileSync(generatedFilePath, result, 'utf8')
+                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, false)
 
-                if (currentRecord && isCurrentRecordTarget(targetDir)) {
-                    const index=currentRecord.getCurrentIndex();
-                    currentRecord.addRecord(refinedFilePath, '粒度'+(index+1));
-                } else {
-                    updateRecordInBackground(targetDir, refinedFilePath);
-                    console.log(`后台更新了 ${targetDir} 的粒度记录`);
-                }
+                // Open generated file.
+                const doc = await vscode.workspace.openTextDocument(generatedFilePath)
+				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
 
-                vscode.window.showInformationMessage(`全局精化完成，文件已保存: ${path.basename(refinedFilePath)}`)
+                // Switch back to the corresponding module.
+                currentRecord = targetRecord
+                currentRecord.fireUpdate()
+
+                vscode.window.showInformationMessage(`全局精化完成，文件已保存: ${path.basename(generatedFilePath)}`)
             } catch (err) {
 				vscode.window.showErrorMessage(`全局精化失败: ${err}`);
 			}
@@ -97,80 +81,75 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
     context.subscriptions.push(
         vscode.commands.registerCommand('refinement.localRefine', async (payload) => {
+
+            assert(currentRecord, 'No usable record for granularity panel.')
+            const targetRecord: GranularityRecord = currentRecord
+
+            // There must be an active editor which corresponds to the last granularity.
             const editor = vscode.window.activeTextEditor
-            if (!editor) {
-                vscode.window.showWarningMessage('请打开一个文件进行局部精化')
+            const selection = editor?.selection
+            const lastNode = targetRecord.getLastNode()
+            const targetFilePath = lastNode.filePath
+
+            if (!editor || path.relative(targetFilePath, editor.document.fileName) !== '' || !selection || selection.isEmpty) {
+                vscode.window.showWarningMessage('局部精化前，请先打开模块最新粒度的文件并选中要精化的部分。')
                 return
             }
-
-            const selection = editor.selection
-            if (selection.isEmpty) {
-                vscode.window.showWarningMessage('请先选中要精化的代码')
-                return
-            }
-
-            const targetDir = path.dirname(editor.document.fileName);
-            const sourceJsonPath = getHumanJsonPath(editor.document.fileName);
 
             vscode.window.showInformationMessage('正在执行局部精化...')
 
             try {
+                const rootPath = targetRecord.getRootPath()
+                const sourceJsonPath = getHumanJsonPath(editor.document.fileName)
                 const fileContent = editor.document.getText()
                 const selectedCode = editor.document.getText(selection)
                 // 注意：VS Code 的 line 是从 0 开始的，这里 +1 可能是为了 Prompt 显示
                 const startLine = selection.start.line + 1 
                 const endLine = selection.end.line + 1
 
-                const prompt = await openaiHelper.getLocalRefinePrompt(fileContent, startLine, endLine, selectedCode, targetDir)
-
+                const prompt = await openaiHelper.getLocalRefinePrompt(fileContent, startLine, endLine, selectedCode, rootPath)
                 const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
                 const refinedContent = cleanLLMResponse(result)
 
                 const timestamp = Date.now()
-                const refinedFilePath = path.join(targetDir, `pseudotrans_local_refined_${timestamp}.txt`) // 或者 .pseudo
+                const generatedFilePath = path.join(rootPath, `pseudotrans_local_refined_${timestamp}.txt`)
                 
-                if (!fs.existsSync(targetDir)) {
-                    fs.mkdirSync(targetDir, { recursive: true })
-                }
-
-                let oldStatus: LineData[] = [];
+                let oldStatus: LineData[] = []
                 if (fs.existsSync(sourceJsonPath)) {
-                    try {
-                        oldStatus = JSON.parse(fs.readFileSync(sourceJsonPath, 'utf-8'));
-                    } catch (e) {
-                        console.error('读取源文件状态失败', e);
-                    }
+                    oldStatus = JSON.parse(fs.readFileSync(sourceJsonPath, 'utf-8'))
                 }
 
-                const changes = Diff.diffLines(fileContent, refinedContent);
+                const changes = Diff.diffLines(fileContent, refinedContent)
 
-                const highlightRanges: { start: number, end: number }[] = [];
-                let newStatus: LineData[] = [];
+                const highlightRanges: { start: number, end: number }[] = []
+                let newStatus: LineData[] = []
 
                 let currentOffset = 0; // 追踪新文件 (refinedContent) 的字符偏移量
                 let oldLineIndex = 0; // 追踪旧文件当前处理到的行号
 
                 changes.forEach(part => {
-                    // part.count 通常就是行数，但为了保险起见，如果 diff 库行为不一致，也可以用 split 计算
-                    // 只要文件不是特别巨大，split 开销可忽略
-                    // 这里直接用 part.count (diff 库标准属性)
-                    const lineCount = part.count || 0; 
-                    const textLength = part.value.length;
+                    /**
+                     * part.count 通常就是行数，但为了保险起见，如果 diff 库行为不一致，也可以用 split 计算
+                     * 只要文件不是特别巨大，split 开销可忽略
+                     * 这里直接用 part.count (diff 库标准属性)
+                     */
+                    const lineCount = part.count || 0
+                    const textLength = part.value.length
 
                     if (part.added) {
                         highlightRanges.push({
                             start: currentOffset,
                             end: currentOffset + textLength
-                        });
+                        })
 
                         for (let i = 0; i < lineCount; i++) {
-                            newStatus.push({ type: 0, content: '' });
+                            newStatus.push({ type: 0, content: '' })
                         }
 
-                        currentOffset += textLength;
+                        currentOffset += textLength
 
                     } else if (part.removed) {
-                        oldLineIndex += lineCount;
+                        oldLineIndex += lineCount
                         
                     } else {
                         for (let i = 0; i < lineCount; i++) {
@@ -178,41 +157,44 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                                 newStatus.push({ 
                                     type: oldStatus[oldLineIndex].type, 
                                     content: '' 
-                                });
+                                })
                             } else {
-                                newStatus.push({ type: 0, content: '' });
+                                newStatus.push({ type: 0, content: '' })
                             }
-                            oldLineIndex++;
+                            oldLineIndex++
                         }
 
-                        currentOffset += textLength;
+                        currentOffset += textLength
                     }
-                });
+                })
                 
-                const refinedLines = refinedContent.split(/\r?\n/);
+                const refinedLines = refinedContent.split(/\r?\n/)
                 if (refinedContent.endsWith('\n') && refinedLines.length > newStatus.length) {
-                    refinedLines.pop();
+                    refinedLines.pop()
                 }
 
                 newStatus.forEach((status, index) => {
                     if (index < refinedLines.length) {
-                        status.content = refinedLines[index];
+                        status.content = refinedLines[index]
                     }
-                });
+                })
 
-                const newJsonPath = getHumanJsonPath(refinedFilePath);
+                const newJsonPath = getHumanJsonPath(generatedFilePath)
 
-                fs.writeFileSync(newJsonPath, JSON.stringify(newStatus, null, 2), 'utf-8');
-                fs.writeFileSync(refinedFilePath, refinedContent, 'utf8')
+                fs.writeFileSync(newJsonPath, JSON.stringify(newStatus, null, 2), 'utf-8')
+                fs.writeFileSync(generatedFilePath, refinedContent, 'utf8')
 
-                if (currentRecord && isCurrentRecordTarget(targetDir)) {
-                    const index=currentRecord.getCurrentIndex();
-                    currentRecord.addRecord(refinedFilePath, '粒度'+(index+1),true,highlightRanges);
-                } else {
-                    updateRecordInBackground(targetDir, refinedFilePath,highlightRanges);
-                    console.log(`后台更新了 ${targetDir} 的粒度记录`);
-                }
-                vscode.window.showInformationMessage(`局部精化完成，文件已保存: ${path.basename(refinedFilePath)}`)
+                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, false, highlightRanges)
+                vscode.window.showInformationMessage(`局部精化完成，文件已保存: ${path.basename(generatedFilePath)}`)
+
+                // Open generated file.
+                const doc = await vscode.workspace.openTextDocument(generatedFilePath)
+				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
+
+                // Switch back to the corresponding module.
+                currentRecord = targetRecord
+                currentRecord.fireUpdate()
+
             } catch (err) {
                 vscode.window.showErrorMessage(`局部精化失败: ${err}`)
             }
@@ -222,16 +204,15 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     context.subscriptions.push(
 		vscode.commands.registerCommand('refinement.rollback', async () => {
             
-            assert(currentRecord, '当前没有活动的粒度记录，无法回退。')
+            assert(currentRecord, 'No usable record for granularity panel.')
 
             const currentIndex = currentRecord.getCurrentIndex()
-
 			if (currentIndex < 0) {
 				vscode.window.showWarningMessage('您还没有选择要回退到的粒度。')
 				return
 			}
 
-			currentRecord.backTo(currentIndex)
+			currentRecord.backTo(currentIndex, false)
 			vscode.window.showInformationMessage(`当前模块已回退至粒度 ${currentIndex}。`)
 
             const aiPath = settings.getAiPath()
@@ -243,22 +224,19 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const sequence = currentRecord.projectHandler.getLeafModuleSequence()
                 const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
 
-                if (seqIndex !== -1 && seqIndex < sequence.length - 1) {
-                            
-                    const laterModules = sequence.slice(seqIndex + 1)
-                            
-                    for (const moduleName of laterModules) {
+                if (seqIndex >= 0 && seqIndex < sequence.length - 1) {
 
+                    const laterModules = sequence.slice(seqIndex + 1)
+                    for (const moduleName of laterModules) {
                         const moduleFullPath = path.join(aiPath, moduleName.relativePath.split('.').join(path.sep))
-                        const tempRecord = new GranularityRecord(moduleFullPath);
+                        const tempRecord = new GranularityRecord(moduleFullPath)
                                         
-                        tempRecord.backTo(0);
-                        tempRecord.dispose();
+                        tempRecord.backTo(0, false)
+                        tempRecord.dispose()
                     }
                 }
 
                 // Synchronize seq.json file.
-                // Needs refactoring.
                 currentRecord.projectHandler.setOnGoingModule(seqIndex)
                 currentRecord.fireUpdate()
 
@@ -271,46 +249,35 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     context.subscriptions.push(
 		vscode.commands.registerCommand('refinement.generateCode', async (payload) => {
 
-            assert(currentRecord, '当前没有活动的粒度记录，无法生成代码。');
+            assert(currentRecord, 'No usable record for granularity panel.')
             const targetRecord = currentRecord
 
-			const editor = vscode.window.activeTextEditor
-			if (!editor) {
-				vscode.window.showWarningMessage('请打开一个文件进行代码生成')
-				return
-			}
-
-            const targetDir = targetRecord.getRootPath();
-            const language = payload && payload.language ? payload.language : 'python';
-            const fileSuffix = getSrcFileSuffix(language) || '.txt';
+            const language = payload && payload.language ? payload.language : 'python'
+            const fileSuffix = getSrcFileSuffix(language) || '.txt'
 
 			vscode.window.showInformationMessage(`正在生成 ${language} 代码...`)
 
 			try {
-				const fileContent = editor.document.getText()
-				const currentNode = targetRecord.getCurrentNode()
-				const lastGranularity = currentNode ? currentNode.description : '';
-				const prompt = await openaiHelper.getGenerateCodePrompt(fileContent, lastGranularity, language, targetDir);
-				const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user);
-				const generatedCode = cleanLLMResponse(result);
+                const rootPath = targetRecord.getRootPath()
+                const lastNode = targetRecord.getLastNode()
+				const fileContent = fs.readFileSync(lastNode.filePath, 'utf8')
+				const prompt = await openaiHelper.getGenerateCodePrompt(fileContent, lastNode.description, language, rootPath)
+				const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
+				const generatedCode = cleanLLMResponse(result)
 				const timestamp = Date.now();
-				const generatedFilePath = path.join(targetDir, `generated_${timestamp}${fileSuffix}`)
+				const generatedFilePath = path.join(rootPath, `generated_${timestamp}${fileSuffix}`)
 
-				if (!fs.existsSync(targetDir)) {
-					fs.mkdirSync(targetDir, { recursive: true })
-				}
 				fs.writeFileSync(generatedFilePath, generatedCode, 'utf8')
 
-                const index = targetRecord.getCurrentIndex()
-                targetRecord.addRecord(generatedFilePath, '粒度'+(index+1), false)
+                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, false)
 
                 const doc = await vscode.workspace.openTextDocument(generatedFilePath)
-				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
+				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One })
 
-				vscode.window.showInformationMessage(`代码已生成，文件已保存: ${path.basename(generatedFilePath)}`);
+				vscode.window.showInformationMessage(`代码已生成，文件已保存: ${path.basename(generatedFilePath)}`)
 
                 // Synchronize seq.json file.
-                const relativePath = path.relative(settings.getAiPath(), targetDir)
+                const relativePath = path.relative(settings.getAiPath(), rootPath)
                 const currentModuleName = relativePath.split(path.sep).join('.')
                 const sequence = targetRecord.projectHandler.getLeafModuleSequence()
                 const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
@@ -338,17 +305,14 @@ export function openGranularityWebview(rootPath: string) {
     currentRecord.onDidChange(async ( nodes: GranularityNode[] ) => {
 
         // Inform the webview to update UI.
-        assert(currentRecord, '当前没有活动的粒度记录，无法更新视图。');
-        const sequence = currentRecord.projectHandler.getLeafModuleSequence();
-        const aiPath = settings.getAiPath();
-        const modName = path.basename(rootPath);
-        const relativePath = path.relative(aiPath, rootPath);
-        const currentModuleName = relativePath.split(path.sep).join('.');
+        assert(currentRecord, 'No usable record for granularity panel.')
+        const sequence = currentRecord.projectHandler.getLeafModuleSequence()
+        const currentModuleName = path.relative(settings.getAiPath(), rootPath).split(path.sep).join('.')
 
         // 得到要打开模块的状态：completed / ongoing / pending
-        const targetMod = sequence.find(mod => mod.relativePath === currentModuleName);        
-        assert(targetMod, `无法在模块列表中找到模块: ${modName}`);
-        const status = targetMod.status;
+        const targetMod = sequence.find(mod => mod.relativePath === currentModuleName)      
+        assert(targetMod, `无法在模块列表中找到模块: ${path.basename(rootPath)}`)
+        const status = targetMod.status
 
         GranularityViewProvider.postMessage({
             type: 'updateView', 
@@ -406,49 +370,4 @@ export function disposeCurrentRecordAndCloseWebview() {
     }
 
     vscode.commands.executeCommand("workbench.action.closePanel")
-}
-
-
-function cleanLLMResponse(text: string): string {
-    const startMarker = '```';
-    const firstIndex = text.indexOf(startMarker);
-    
-    if (firstIndex === -1) {
-        return text.trim();
-    }
-    
-    // Find the end of the line containing the opening ```
-    const nextNewline = text.indexOf('\n', firstIndex);
-    let contentStartIndex = 0;
-    
-    if (nextNewline !== -1) {
-        contentStartIndex = nextNewline + 1;
-    } else {
-        // Fallback if no newline found (unlikely for valid code blocks)
-        contentStartIndex = firstIndex + startMarker.length;
-    }
-    
-    let content = text.substring(contentStartIndex);
-    
-    // Find the closing ```
-    const closingIndex = content.indexOf(startMarker);
-    if (closingIndex !== -1) {
-        content = content.substring(0, closingIndex);
-    }
-    
-    return content.trim();
-}
-
-
-function getHumanJsonPath(fileName: string): string {
-    if (fileName.endsWith('.pseudo')) {
-        return fileName.replace(/\.pseudo$/, '_pseudo_human.json');
-    } else {
-        return fileName.replace(/\.[^.]+$/, '_py_human.json');
-    }
-}
-
-interface LineData {
-    type: number; // 0: AI, 1: Human
-    content: string;
 }

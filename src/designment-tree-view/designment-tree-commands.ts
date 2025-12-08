@@ -257,7 +257,6 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
         )
 
         vscode.commands.executeCommand("setContext", "CodeToolBox.chatGPTView", true)
-        // vscode.commands.executeCommand("setContext", "CodeToolBox.isTaskRunning", false)
     })
 }
 

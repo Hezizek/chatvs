@@ -11,8 +11,8 @@ enum LineStatus {
 }
 
 interface LineData {
-    type: LineStatus;
-    content: string;
+    type: LineStatus
+    content: string
 }
 
 // --- 核心类定义 (保持不变) ---
