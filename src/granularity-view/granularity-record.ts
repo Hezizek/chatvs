@@ -155,7 +155,6 @@ export class GranularityRecord {
 
     // 替换全局唯一 Record 或插件关闭时手动调用
     public dispose() {
-        this.nodes.forEach(node => node.isActive = false)
         // [修改] 调用新增的保存逻辑
         this.saveToDisk()
     }
