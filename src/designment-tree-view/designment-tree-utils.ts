@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 import * as path from 'path'
 import * as fs from 'fs'
-import { DesignmentTreeNode, DirectoryNode, FileNode, NodeType } from './designment-tree-data-provider'
+import { DesignmentTreeNode, DirectoryNode, FileNode, NodeType, ProjectState } from './designment-tree-data-provider'
 import { topoSortLeafModules } from '../tools/module-topology-util'
 import * as designmentService from './designment-tree-service'
 import * as openaiHelper from '../openai/openai-helper'

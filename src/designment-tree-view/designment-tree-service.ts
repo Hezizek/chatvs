@@ -82,3 +82,15 @@ export async function createProject(label: string) {
     dataProvider.localNodeTree.push(newProj)
     dataProvider.refresh(undefined)
 }
+
+
+export async function deleteDirectoryNode(node: DirectoryNode) {
+    // Deleting corresponding folder in fs.
+    fs.rmSync(node.absolutePath, { recursive: true, force: true })
+
+    const designmentTreeDataProvider = DesignmentTreeDataProvider.getInstance()
+    const parentChildren = node.parent ? node.parent.children : designmentTreeDataProvider.localNodeTree
+    const index = parentChildren.indexOf(node)
+    parentChildren.splice(index, 1)
+    designmentTreeDataProvider.refresh(node.parent)
+}

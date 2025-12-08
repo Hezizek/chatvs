@@ -3,10 +3,11 @@ import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as Diff from 'diff'
+import * as settings from '../settings/settings'
 import * as openaiHelper from '../openai/openai-helper'
+import { GranularityViewProvider } from './granularity-view-provider'
 import { GranularityNode, GranularityRecord } from './granularity-record'
 import { getSrcFileSuffix } from '../tools/lang-util'
-import * as settings from '../settings/settings'
 
 export let currentRecord: GranularityRecord | null = null
 
@@ -16,92 +17,7 @@ const refineHighlightType = vscode.window.createTextEditorDecorationType({
     overviewRulerColor: new vscode.ThemeColor('diffEditor.insertedTextOverviewRuler'),
     overviewRulerLane: vscode.OverviewRulerLane.Right,
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
-});
-
-class GranularityViewProvider implements vscode.WebviewViewProvider {
-    public static currentView: vscode.WebviewView | undefined
-    private readonly _extensionUri: vscode.Uri
-
-    constructor(extensionUri: vscode.Uri) {
-        this._extensionUri = extensionUri
-    }
-
-    public resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        context: vscode.WebviewViewResolveContext,
-        token: vscode.CancellationToken
-    ): Thenable<void> | void {
-
-        GranularityViewProvider.currentView = webviewView
-        webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this._extensionUri]
-        }
-
-        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview)
-
-        webviewView.webview.onDidReceiveMessage(async data => {
-            switch (data.type) {
-                case 'executeCommand':
-                    if (data.commandId === 'refinement.switchModule') {
-                        const moduleName = data.payload.moduleName;
-                        const aiPath = settings.getAiPath();
-                        
-                        if (moduleName) {
-                            const modulePath = path.join(aiPath, moduleName.replace(/\./g, path.sep));
-                            const moduleContentPath = path.join(modulePath, 'content.txt');
-                            if (fs.existsSync(moduleContentPath)) {
-                                try {
-
-                                    const doc = await vscode.workspace.openTextDocument(moduleContentPath);
-                                    await vscode.window.showTextDocument(doc);
-                                    openGranularityWebview(modulePath);
-                                } catch (e) {
-                                    vscode.window.showErrorMessage(`无法打开模块 ${moduleName}: ${e}`);
-                                }
-                            } else {
-                                vscode.window.showWarningMessage(`未找到模块文件: ${moduleContentPath}`);
-                            }
-                        }
-                        return;
-                    }
-
-                    vscode.commands.executeCommand(data.commandId, data.payload)
-                    return
-
-                case 'webviewReady':
-                    if (currentRecord) {
-                        currentRecord.fireUpdate()
-                    }
-            }
-        })
-    }
-
-    public static postMessage(message: any) {
-        if (GranularityViewProvider.currentView) {
-            GranularityViewProvider.currentView.webview.postMessage(message)
-        }
-    }
-
-    private _getHtmlForWebview(webview: vscode.Webview): string {
-
-        const styleUri = vscode.Uri.joinPath(
-            this._extensionUri,
-            'html',
-            'granularity-panel.css'
-        )
-        
-        const htmlUri = vscode.Uri.joinPath(
-            this._extensionUri,
-            'html',
-            'granularity-panel.html'
-        )
-
-        let html = fs.readFileSync(htmlUri.fsPath, 'utf8')
-        const webviewUri = webview.asWebviewUri(styleUri)
-        return html.replace('{{styleUri}}', webviewUri.toString())
-    }
-}
+})
 
 // 增加一个辅助函数，用于处理后台更新
 function updateRecordInBackground(
@@ -140,7 +56,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     )
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('refinement.globalRefine', async (payload) => {
+        vscode.commands.registerCommand('refinement.globalRefine', async () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) {
                 vscode.window.showWarningMessage('请打开一个文件夹进行全局精化')
@@ -362,6 +278,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 		vscode.commands.registerCommand('refinement.generateCode', async (payload) => {
 
             assert(currentRecord, '当前没有活动的粒度记录，无法生成代码。');
+            const targetRecord = currentRecord
 
 			const editor = vscode.window.activeTextEditor
 			if (!editor) {
@@ -369,15 +286,15 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				return
 			}
 
-            const targetDir = path.dirname(editor.document.fileName);
+            const targetDir = targetRecord.getRootPath();
             const language = payload && payload.language ? payload.language : 'python';
             const fileSuffix = getSrcFileSuffix(language) || '.txt';
 
-			vscode.window.showInformationMessage(`正在生成 ${language} 代码，请稍候...`)
+			vscode.window.showInformationMessage(`正在生成 ${language} 代码...`)
 
 			try {
 				const fileContent = editor.document.getText()
-				const currentNode = currentRecord.getCurrentNode()
+				const currentNode = targetRecord.getCurrentNode()
 				const lastGranularity = currentNode ? currentNode.description : '';
 				const prompt = await openaiHelper.getGenerateCodePrompt(fileContent, lastGranularity, language, targetDir);
 				const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user);
@@ -390,14 +307,8 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				}
 				fs.writeFileSync(generatedFilePath, generatedCode, 'utf8')
 
-				if (isCurrentRecordTarget(targetDir)) {
-                    const index = currentRecord.getCurrentIndex();
-                    currentRecord.addRecord(generatedFilePath, '粒度'+(index+1));
-                } else {
-                    
-                    updateRecordInBackground(targetDir, generatedFilePath );
-                    console.log(`后台更新了 ${targetDir} 的粒度记录`);
-                }
+                const index = targetRecord.getCurrentIndex()
+                targetRecord.addRecord(generatedFilePath, '粒度'+(index+1), false)
 
                 const doc = await vscode.workspace.openTextDocument(generatedFilePath)
 				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
@@ -405,15 +316,13 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				vscode.window.showInformationMessage(`代码已生成，文件已保存: ${path.basename(generatedFilePath)}`);
 
                 // Synchronize seq.json file.
-                // Get index of current module.
-                // Needs refactoring.
-                const rootPath = currentRecord.getRootPath();
-                const relativePath = path.relative(settings.getAiPath(), rootPath);
-                const currentModuleName = relativePath.split(path.sep).join('.');
-                const sequence = currentRecord.projectHandler.getLeafModuleSequence();
-                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName);
-                currentRecord.projectHandler.setOnGoingModule(seqIndex + 1);
-                currentRecord.fireUpdate();
+                const relativePath = path.relative(settings.getAiPath(), targetDir)
+                const currentModuleName = relativePath.split(path.sep).join('.')
+                const sequence = targetRecord.projectHandler.getLeafModuleSequence()
+                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
+                targetRecord.projectHandler.setOnGoingModule(seqIndex + 1)
+                currentRecord = targetRecord
+                currentRecord.fireUpdate()
 
 			} catch (err) {
 				vscode.window.showErrorMessage(`代码生成失败: ${err}`)
