@@ -73,18 +73,12 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 
                 // 这里会耗时很久，期间 currentRecord 可能会变
                 const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
-                
-                const refinedContent = result
                 const timestamp = Date.now()
                 
                 // 使用之前捕获的 targetDir，而不是重新获取 editor.document (因为 editor 可能也切走了)
                 const refinedFilePath = path.join(targetDir, `pseudotrans_global_refined_${timestamp}.txt`)
             
-                if (!fs.existsSync(targetDir)) {
-                    fs.mkdirSync(targetDir, { recursive: true })
-                }
-
-                fs.writeFileSync(refinedFilePath, refinedContent, 'utf8')
+                fs.writeFileSync(refinedFilePath, result, 'utf8')
 
                 if (currentRecord && isCurrentRecordTarget(targetDir)) {
                     const index=currentRecord.getCurrentIndex();
