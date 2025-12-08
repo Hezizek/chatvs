@@ -87,11 +87,10 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
             // There must be an active editor which corresponds to the last granularity.
             const editor = vscode.window.activeTextEditor
-            const selection = editor?.selection
             const lastNode = targetRecord.getLastNode()
             const targetFilePath = lastNode.filePath
 
-            if (!editor || path.relative(targetFilePath, editor.document.fileName) !== '' || !selection || selection.isEmpty) {
+            if (!editor || path.relative(targetFilePath, editor.document.fileName) !== '' || editor.selection.isEmpty) {
                 vscode.window.showWarningMessage('局部精化前，请先打开模块最新粒度的文件并选中要精化的部分。')
                 return
             }
@@ -99,6 +98,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
             vscode.window.showInformationMessage('正在执行局部精化...')
 
             try {
+                const selection = editor.selection
                 const rootPath = targetRecord.getRootPath()
                 const sourceJsonPath = getHumanJsonPath(editor.document.fileName)
                 const fileContent = editor.document.getText()
