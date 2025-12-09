@@ -283,7 +283,7 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
 /**
  * 全局精化提示词 - 对伪代码的全局优化
  */
-export async function getGlobalRefinePrompt(fileContent: string, currentModulePath?: string): Promise<{ system: string; user: string }> {
+export async function getGlobalRefinePrompt(fileContent: string, currentModulePath?: string, commonDSPath?: string): Promise<{ system: string; user: string }> {
     // 简单的启发式判断：如果去除首尾空格后以 '{' 开头，则视为 JSON 设计文档
     const isJsonDesign = fileContent.trim().startsWith('{');
 
@@ -291,6 +291,16 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
     let dependenciesCode = '';
     if (currentModulePath) {
         dependenciesCode = await getDependencyModulesCode(currentModulePath,'pseudocode');
+    }
+
+    // 获取通用数据结构内容
+    let commonDSContent = '';
+    if (commonDSPath && fs.existsSync(commonDSPath)) {
+        try {
+            commonDSContent = fs.readFileSync(commonDSPath, 'utf-8');
+        } catch (error) {
+            console.error('读取通用数据结构失败:', error);
+        }
     }
 
     if (isJsonDesign) {
@@ -307,9 +317,17 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
         
         const json2psePromptPath = path.join(extensionPath, 'resources', 'prompts', 'json2pse_v1.md');
         
-        const userPrompt = dependenciesCode 
-            ? `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n以下是该模块依赖的上游模块的伪代码实现，在生成目标模块伪代码时请参考这些依赖模块的函数签名和接口：${dependenciesCode}\n\n请直接返回伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
-            : `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n请直接返回伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+        let userPrompt = `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n`;
+
+        if (commonDSContent) {
+            userPrompt += `通用数据结构定义：\n${commonDSContent}\n\n`;
+        }
+
+        if (dependenciesCode) {
+            userPrompt += `以下是该模块依赖的上游模块的伪代码实现，在生成目标模块伪代码时请参考这些依赖模块的函数签名和接口：${dependenciesCode}\n\n`;
+        }
+
+        userPrompt += `请直接返回伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
 
         if (!fs.existsSync(json2psePromptPath)) {
             console.error('找不到json2pse_v1.md文件:', json2psePromptPath);
