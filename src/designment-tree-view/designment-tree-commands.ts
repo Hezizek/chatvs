@@ -33,17 +33,11 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
             if (event.selection.length === 1) {
 
                 const selected = event.selection[0]
-                const projectState = selected.getProjectState()
                 vscode.commands.executeCommand(
                     "setContext",
                     "CodeToolBox.enableCreateModule",
-                    selected instanceof DirectoryNode && (projectState === ProjectState.empty || projectState === ProjectState.dataStructureExtractable)
+                    selected instanceof DirectoryNode && selected.allowModuleDivisionButtonWhenSelected()
                 )
-
-                // If tree view is banned, do nothing.
-                if (designmentTreeDataProvider.isBanned()) {
-                    return
-                }
                 
                 const contentPath = selected.getContentFilePath()
                 const doc = await vscode.workspace.openTextDocument(contentPath)
@@ -134,7 +128,8 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     throw Error('Use module division on project node.')
                 }
 
-                designmentTreeDataProvider.ban()
+                designmentTreeDataProvider.switchBannedStateForWholeProject(node)
+                checkModuleDivisionButtonState()
                 await vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: '正在划分模块...',
@@ -149,7 +144,8 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                         console.error('Failed to divide module: ', error)
                     }
                 })
-                designmentTreeDataProvider.recover()
+                designmentTreeDataProvider.switchBannedStateForWholeProject(node)
+                checkModuleDivisionButtonState()
             })
         )
 
@@ -160,7 +156,8 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     throw Error('Use first division on module node.')
                 }
 
-                designmentTreeDataProvider.ban()
+                designmentTreeDataProvider.switchBannedStateForWholeProject(node)
+                checkModuleDivisionButtonState()
                 await vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: '正在划分初始模块...',
@@ -175,15 +172,16 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                         console.error('Failed to divide module: ', error)
                     }
                 })
-                designmentTreeDataProvider.recover()
-
+                designmentTreeDataProvider.switchBannedStateForWholeProject(node)
+                checkModuleDivisionButtonState()
             })
         )
 
         context.subscriptions.push(
             vscode.commands.registerCommand('CodeToolBox.extractCommonDataStructure', async (node: DirectoryNode) => {
 
-                designmentTreeDataProvider.ban()
+                designmentTreeDataProvider.switchBannedStateForWholeProject(node)
+                checkModuleDivisionButtonState()
                 await vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: '正在提取通用数据结构...',
@@ -194,29 +192,20 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                         designmentTreeDataProvider.refresh(node)
                         vscode.window.showInformationMessage('通用数据结构提取成功！')
 
-                        // Extracting common DS will change the state of the project to completable, where the module-creating button should be banned.
-                        const selected = treeView.selection[0]
-                        if (selected && treeView.selection.length === 1) {
-                            if (selected.getProjectState() === ProjectState.designmentCompletable) {
-                                vscode.commands.executeCommand(
-                                    "setContext",
-                                    "CodeToolBox.enableCreateModule",
-                                    false
-                                )
-                            }
-                        }
                     } catch (error) {
                         vscode.window.showErrorMessage('提取通用数据结构失败。')
                         console.error('Failed to extract common data structure: ', error)
                     }
                 })
-                designmentTreeDataProvider.recover()
+                designmentTreeDataProvider.switchBannedStateForWholeProject(node)
+                checkModuleDivisionButtonState()
             })
         )
 
         context.subscriptions.push(
             vscode.commands.registerCommand('CodeToolBox.getLeafModules', async (node: DirectoryNode) => {
-                designmentTreeDataProvider.ban()
+                designmentTreeDataProvider.switchBannedStateForWholeProject(node)
+                checkModuleDivisionButtonState()
                 await vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: '正在获取叶子模块...',
@@ -231,13 +220,13 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                         console.error('Failed to get leaf modules: ', error)
                     }
                 })
-                designmentTreeDataProvider.recover()
+                designmentTreeDataProvider.switchBannedStateForWholeProject(node)
+                checkModuleDivisionButtonState()
             })
         )
 
         context.subscriptions.push(
             vscode.commands.registerCommand('CodeToolBox.extractProject', async (node: DirectoryNode) => {
-                designmentTreeDataProvider.ban()
                 await vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: '正在提取项目...',
@@ -252,11 +241,21 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                         console.error('Failed to extract project: ', error)
                     }
                 })
-                designmentTreeDataProvider.recover()
             })
         )
 
         vscode.commands.executeCommand("setContext", "CodeToolBox.chatGPTView", true)
+
+        function checkModuleDivisionButtonState() {
+            const selected = treeView.selection[0]
+            if (selected && treeView.selection.length === 1) {
+                vscode.commands.executeCommand(
+                    "setContext",
+                    "CodeToolBox.enableCreateModule",
+                    selected instanceof DirectoryNode && selected.allowModuleDivisionButtonWhenSelected()
+                )
+            }
+        }
     })
 }
 

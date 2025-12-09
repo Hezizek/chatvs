@@ -47,7 +47,7 @@ export async function createModule(
         throw error
     }
 
-    const newModule = new DirectoryNode(label, absolutePath, NodeType.Module, parent)
+    const newModule = new DirectoryNode(label, absolutePath, NodeType.Module, parent, [], parent.banned)
     parent.children.push(newModule)
     const dataProvider = DesignmentTreeDataProvider.getInstance()
     dataProvider.refresh(parent)
