@@ -49,6 +49,27 @@ export abstract class DesignmentTreeNode {
             throw Error('Unexpected error: root node is not of project type.')
         }
     }
+
+    public switchBannedProjectState(): DirectoryNode {
+        let iter: DesignmentTreeNode = this
+        while (iter.parent) iter = iter.parent
+        if (iter.type === NodeType.Project && iter instanceof DirectoryNode) {
+            // Switch banned state for all directory nodes under this project.
+            function switchBannedState(node: DirectoryNode): void {
+                node.banned = !node.banned
+                node.children.forEach(child => {
+                    if (child instanceof DirectoryNode) {
+                        switchBannedState(child)
+                    }
+                }) 
+            }
+
+            switchBannedState(iter)
+            return iter
+        } else {
+            throw Error('Unexpected error: root node is not of project type.')
+        }
+    }
 }
 
 export class FileNode extends DesignmentTreeNode {
@@ -80,15 +101,18 @@ export class FileNode extends DesignmentTreeNode {
 
 export class DirectoryNode extends DesignmentTreeNode {
     public children: DesignmentTreeNode[]
+    public banned: boolean = false
     constructor(
         label: string,
         absolutePath: string,
         type: NodeType.Project | NodeType.Module,
         parent?: DirectoryNode,
-        children?: DesignmentTreeNode[]
+        children?: DesignmentTreeNode[],
+        banned?: boolean
     ) {
         super(label, absolutePath, type, parent)
         this.children = children || []
+        this.banned = banned || false
     }
 
     getContentFilePath(): string {
@@ -105,6 +129,12 @@ export class DirectoryNode extends DesignmentTreeNode {
 
     isLeaf(): boolean {
         return this.children.length === 0
+    }
+
+    // When the node is selected, whether the module creating button should be activated.
+    allowModuleDivisionButtonWhenSelected(): boolean {
+        const projectState = this.getProjectState()
+        return (projectState === ProjectState.empty || projectState === ProjectState.dataStructureExtractable) && !this.banned
     }
 }
 
@@ -133,9 +163,6 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
     // The actual tree structure data stored in memory.
     public localNodeTree: DesignmentTreeNode[] = []
 
-    // Whether the tree is banned.
-    private banned: boolean = false
-
     getTreeItem(element: DesignmentTreeNode): vscode.TreeItem {
         const treeItem = new vscode.TreeItem(element.label, this.getCollapsibleState(element))
         treeItem.contextValue = this.getContextValue(element)
@@ -144,15 +171,12 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
     }
 
     private getCollapsibleState(element: DesignmentTreeNode): vscode.TreeItemCollapsibleState {
-        if (this.banned) {
-            return vscode.TreeItemCollapsibleState.None
-        }
         return element.isExtendable() ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
     }
 
     private getIconPath(element: DesignmentTreeNode): vscode.ThemeIcon {
 
-        if (this.banned) {
+        if (element instanceof DirectoryNode && element.banned) {
             // Show spinning circle.
             return new vscode.ThemeIcon('loading~spin')
         }
@@ -177,17 +201,20 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
         let contextValue = element.getTypeString().toLowerCase()
 
         // Only module nodes and project nodes need extra context value.
-        if (element.type === NodeType.Project) {
-            assert(element instanceof DirectoryNode, 'Unexpected error: node of type Project is not a DirectoryNode.')
-            const suffix = ' ' + ProjectState[element.getProjectState()]
-            contextValue += suffix
-        } else if (element.type === NodeType.Module) {
-            if (element.isLeaf()) {
-                contextValue += ' leaf'
-            }
+        if (element instanceof DirectoryNode) {
+            if (element.banned) contextValue += ' banned'
+            if (element.type === NodeType.Project) {
+                assert(element instanceof DirectoryNode, 'Unexpected error: node of type Project is not a DirectoryNode.')
+                const suffix = ' ' + ProjectState[element.getProjectState()]
+                contextValue += suffix
+            } else if (element.type === NodeType.Module) {
+                if (element.isLeaf()) {
+                    contextValue += ' leaf'
+                }
 
-            if (element.getProjectState() !== ProjectState.dataStructureExtractable) {
-                contextValue += ' fixed'
+                if (element.getProjectState() !== ProjectState.dataStructureExtractable) {
+                    contextValue += ' fixed'
+                }
             }
         }
         return contextValue
@@ -209,21 +236,9 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
         this._onDidChangeTreeData.fire(fileNode)
     }
 
-    // Ban user interaction with the treeView.
-    ban(): void {
-        this.banned = true
-        this.refresh(undefined)
-        vscode.commands.executeCommand('setContext', 'CodeToolBox.isTaskRunning', true)
-    }
-
-    // Cancelled the banned state.
-    recover(): void {
-        this.banned = false
-        this.refresh(undefined)
-        vscode.commands.executeCommand('setContext', 'CodeToolBox.isTaskRunning', false)
-    }
-
-    isBanned(): boolean {
-        return this.banned
+    // Banned the whole project that the given node is in.
+    switchBannedStateForWholeProject(node: DesignmentTreeNode): void {
+        const projectNode = node.switchBannedProjectState()
+        this.refresh(projectNode)
     }
 }

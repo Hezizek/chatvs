@@ -107,13 +107,12 @@
         "command": "CodeToolBox.createModule",
         "title": "创建子模块",
         "icon": "images/add-module.svg",
-        "enablement": "CodeToolBox.enableCreateModule && !CodeToolBox.isTaskRunning"
+        "enablement": "CodeToolBox.enableCreateModule"
       },
       {
         "command": "CodeToolBox.createProj",
         "title": "创建项目",
-        "icon": "images/add-proj.svg",
-        "enablement": "!CodeToolBox.isTaskRunning"
+        "icon": "images/add-proj.svg"
       },
       {
         "command": "CodeToolBox.deleteModule",
@@ -239,37 +238,37 @@
       "view/item/context": [
         {
           "command": "CodeToolBox.extractProject",
-          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /project/",
+          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /project/",
           "group": "3_code_generation@1"
         },
         {
           "command": "CodeToolBox.deleteModule",
-          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /module/",
+          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /module/",
           "group": "2_human_design@1"
         },
         {
           "command": "CodeToolBox.deleteProject",
-          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /project/",
+          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /project/",
           "group": "2_human_design@2"
         },
         {
           "command": "CodeToolBox.extractCommonDataStructure",
-          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /project/",
+          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /project/",
           "group": "1_ai_design@2"
         },
         {
           "command": "CodeToolBox.firstDivision",
-          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /project/",
+          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /project/",
           "group": "1_ai_design@1"
         },
         {
           "command": "CodeToolBox.divideModule",
-          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /module/",
+          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /module/",
           "group": "1_ai_design@4"
         },
         {
           "command": "CodeToolBox.getLeafModules",
-          "when": "view == CodeToolBox.chatGPTView && !CodeToolBox.isTaskRunning && viewItem =~ /project/",
+          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /project/",
           "group": "1_ai_design@3"
         }
       ]
