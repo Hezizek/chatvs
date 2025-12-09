@@ -53,7 +53,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const targetFilePath = lastNode.filePath
                 const fileContent = fs.readFileSync(targetFilePath, 'utf8')
 
-                const prompt = await openaiHelper.getGlobalRefinePrompt(fileContent, rootPath)
+                // 获取项目根路径并构建通用数据结构路径
+                const projectRootPath = targetRecord.projectHandler.rootPath
+                const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
+
+                const prompt = await openaiHelper.getGlobalRefinePrompt(fileContent, rootPath, commonDSPath)
                 
                 // It will take long here, where currentRecord may change.
                 const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
