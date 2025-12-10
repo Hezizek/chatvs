@@ -25,12 +25,13 @@ export const ModulesArraySchema = z.array(ModuleSchema).min(1, "至少需要一�
 /**
  * 接口定义 Schema
  * 用于叶子模块中的 interfaces 字段
+ * 要求每个接口必须有详细的描述，包含具体的逻辑步骤
  */
 const InterfaceSchema = z.object({
     name: z.string().min(1, "接口名称(name)不能为空"),
     params: z.string().min(1, "参数列表(params)不能为空"),
     return_type: z.string().min(1, "返回值类型(return_type)不能为空"),
-    description: z.string().min(1, "接口描述(description)不能为空，必须包含详细的逻辑步骤"),
+    description: z.string().min(20, "接口描述(description)不能为空，必须包含详细的逻辑步骤（至少20个字符），不能只是简单的一句话概括"),
 });
 
 /**
@@ -41,16 +42,34 @@ const InterfaceSchema = z.object({
  * - module_name: 模块的全限定名 (PascalCase)，如：a.b.c
  * - dependencies: 依赖模块名列表
  * - local_variable: 模块内部持有的私有变量/状态列表
- * - interfaces: 函数接口定义数组
+ * - interfaces: 函数接口定义数组（普通模块必须至少有一个接口）
  * - entry_point_logic: 仅驱动模块填写，普通模块填 null
+ * 
+ * 关键约束：
+ * - 如果 entry_point_logic 为 null（普通模块），则 interfaces 必须至少有一个接口
+ * - 如果 entry_point_logic 不为 null（驱动模块），则可以没有 interfaces
+ * - 每个接口的 description 必须包含详细的逻辑步骤描述（至少20个字符）
  */
 export const LeafModuleSchema = z.object({
     module_name: z.string().min(1, "模块名称(module_name)不能为空"),
     dependencies: z.array(z.string()).default([]),
     local_variable: z.array(z.string()).default([]),
     interfaces: z.array(InterfaceSchema).default([]),
-    entry_point_logic: z.union([z.string(), z.null()]).nullable(),
-});
+    entry_point_logic: z.union([z.string().min(20, "入口逻辑(entry_point_logic)不能为空字符串，必须包含详细的逻辑描述（至少20个字符）"), z.null()]).nullable(),
+}).refine(
+    (data) => {
+        // 如果是普通模块（entry_point_logic 为 null），必须至少有一个接口
+        if (data.entry_point_logic === null || data.entry_point_logic === '') {
+            return data.interfaces.length > 0;
+        }
+        // 如果是驱动模块（有 entry_point_logic），则可以没有接口
+        return true;
+    },
+    {
+        message: "普通模块（entry_point_logic为null）必须至少定义一个接口(interfaces)，且每个接口必须包含详细的逻辑步骤描述。驱动模块必须填写entry_point_logic。",
+        path: ["interfaces"],
+    }
+);
 
 /**
  * 叶子模块数组 Schema
