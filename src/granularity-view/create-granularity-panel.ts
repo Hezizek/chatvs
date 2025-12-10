@@ -111,7 +111,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const startLine = selection.start.line + 1 
                 const endLine = selection.end.line + 1
 
-                const prompt = await openaiHelper.getLocalRefinePrompt(fileContent, startLine, endLine, selectedCode, rootPath)
+                // 获取项目根路径并构建通用数据结构路径
+                const projectRootPath = targetRecord.projectHandler.rootPath
+                const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
+                
+                const prompt = await openaiHelper.getLocalRefinePrompt(fileContent, startLine, endLine, selectedCode, rootPath, commonDSPath)
                 const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
                 const refinedContent = cleanLLMResponse(result)
 
