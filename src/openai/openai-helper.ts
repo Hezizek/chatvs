@@ -419,7 +419,7 @@ export async function getGenerateCodePrompt(fileContent: string, lastGranularity
             const projectRootPath = path.join(aiPath, pathParts[0]);
             
             // 尝试读取实际数据结构文件
-            const { getActualDataStructureContent } = require('../tools/actual-datastructure-generator');
+            const { getActualDataStructureContent } = await import('../tools/actual-datastructure-generator.js');
             actualDataStructureCode = getActualDataStructureContent(projectRootPath, language);
             
             if (actualDataStructureCode) {
