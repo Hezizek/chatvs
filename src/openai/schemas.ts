@@ -85,8 +85,9 @@ export const DataStructureSchema = z.object({
 
 /**
  * 通用数据结构数组 Schema
+ * 必须至少包含一个数据结构
  */
-export const DataStructuresArraySchema = z.array(DataStructureSchema);
+export const DataStructuresArraySchema = z.array(DataStructureSchema).min(1, "至少需要定义一个通用数据结构");
 
 /**
  * Schema 类型导出
