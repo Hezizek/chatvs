@@ -282,7 +282,7 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
             extensionPath = parent;
         }
         
-        const json2psePromptPath = path.join(extensionPath, 'resources', 'prompts', 'json2pse_v1.md');
+        const json2psePromptPath = path.join(extensionPath, 'resources', 'prompts', 'json2pse_v3.md');
         
         let userPrompt = `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n`;
 
@@ -349,7 +349,8 @@ export async function getLocalRefinePrompt(
     startLine: number,
     endLine: number,
     selectedCode: string,
-    currentModulePath?: string
+    currentModulePath?: string,
+    commonDSPath?: string
 ): Promise<{ system: string; user: string }> {
     // 获取依赖模块代码
     let dependenciesCode = '';
@@ -357,9 +358,28 @@ export async function getLocalRefinePrompt(
         dependenciesCode = await getDependencyModulesCode(currentModulePath,'pseudocode');
     }
 
-    const userPrompt = dependenciesCode
-        ? `文件完整内容如下：\n\n${fileContent}\n\n用户选中的待精化部分（第 ${startLine} - ${endLine} 行）：\n\n${selectedCode}\n\n**依赖模块的伪代码实现（这些模块已存在）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，不需要修改\n- 如果选中部分涉及调用依赖模块，请确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n\n请对选中部分进行精化，并返回修改后的**完整**伪代码内容。`
-        : `文件完整内容如下：\n\n${fileContent}\n\n用户选中的待精化部分（第 ${startLine} - ${endLine} 行）：\n\n${selectedCode}\n\n请对选中部分进行精化，并返回修改后的**完整**伪代码内容。`;
+    // 获取通用数据结构内容（JSON 格式）
+    let commonDSContent = '';
+    if (commonDSPath && fs.existsSync(commonDSPath)) {
+        try {
+            commonDSContent = fs.readFileSync(commonDSPath, 'utf-8');
+            console.log('[getLocalRefinePrompt] 成功读取通用数据结构 JSON 文件');
+        } catch (error) {
+            console.error('读取通用数据结构失败:', error);
+        }
+    }
+
+    let userPrompt = `文件完整内容如下：\n\n${fileContent}\n\n用户选中的待精化部分（第 ${startLine} - ${endLine} 行）：\n\n${selectedCode}\n\n`;
+    
+    if (commonDSContent) {
+        userPrompt += `通用数据结构定义（JSON 格式）：\n${commonDSContent}\n\n`;
+    }
+    
+    if (dependenciesCode) {
+        userPrompt += `**依赖模块的伪代码实现（这些模块已存在）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，不需要修改\n- 如果选中部分涉及调用依赖模块，请确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n\n`;
+    }
+    
+    userPrompt += `请对选中部分进行精化，并返回修改后的**完整**伪代码内容。`;
 
     return {
         system: `你是一个专业的伪代码审查专家。你的任务是对伪代码的特定部分进行局部精化，但必须返回**修改后的完整文件内容**。
@@ -414,7 +434,7 @@ export async function getGenerateCodePrompt(fileContent: string, lastGranularity
     let userPrompt = `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n`;
     
     if (actualDataStructureCode) {
-        userPrompt += `**项目的实际数据结构定义（已生成的代码）**：\n${actualDataStructureCode}\n\n**关于数据结构的重要说明**：\n1. 上述数据结构代码已经存在于项目根目录中\n2. 请在生成的代码开头使用 import 语句导入需要的数据结构\n3. **绝对不要**重新定义这些数据结构\n4. 直接使用已定义的数据结构类型\n\n`;
+        userPrompt += `**项目的实际数据结构定义（已生成的代码，位于项目根目录的 data_structures.${language === 'python' ? 'py' : language} 文件中）**：\n\n${actualDataStructureCode}\n\n**关于数据结构的重要说明（请务必遵守）**：\n1. 上述数据结构代码**已经存在**于项目根目录的 data_structures 文件中\n2. **绝对禁止**在生成的代码中重新定义或复制这些数据结构的任何部分\n3. 如果需要使用这些数据结构，**必须且只能**通过 import 语句导入\n4. 例如 Python 中应写：from data_structures import ExpressionInput, ParsedExpression, CalculationResult\n5. 导入后直接使用，不要有任何关于数据结构的定义代码\n\n`;
     }
     
     if (dependenciesCode) {
