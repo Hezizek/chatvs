@@ -70,7 +70,7 @@ export async function extractProject(projectRootPath: string, language: string =
     fs.mkdirSync(outputProjectPath, { recursive: true });
     
     // 4. 复制实际数据结构文件（如果存在）
-    const { checkActualDataStructureExists } = require('./actual-datastructure-generator');
+    const { checkActualDataStructureExists } = await import('./actual-datastructure-generator.js');
     const actualDSFilePath = checkActualDataStructureExists(projectRootPath, language);
     
     if (actualDSFilePath) {
