@@ -263,6 +263,30 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
 			try {
                 const rootPath = targetRecord.getRootPath()
+                
+                // 检查是否为第一个模块（即序列中的第 0 个）
+                const relativePath = path.relative(settings.getAiPath(), rootPath)
+                const currentModuleName = relativePath.split(path.sep).join('.')
+                const sequence = targetRecord.projectHandler.getLeafModuleSequence()
+                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
+                const isFirstModule = (seqIndex === 0)
+                
+                // 如果是第一个模块，先生成实际数据结构文件
+                if (isFirstModule) {
+                    console.log('[generateCode] 检测到第一个模块，开始生成实际数据结构文件...')
+                    const projectRootPath = targetRecord.projectHandler.rootPath
+                    
+                    try {
+                        const { generateActualDataStructure } = await import('../tools/actual-datastructure-generator')
+                        const dsFilePath = await generateActualDataStructure(projectRootPath, language, context)
+                        vscode.window.showInformationMessage(`实际数据结构文件已生成: ${path.basename(dsFilePath)}`)
+                        console.log('[generateCode] 实际数据结构文件生成成功:', dsFilePath)
+                    } catch (dsError) {
+                        console.error('[generateCode] 生成实际数据结构文件失败:', dsError)
+                        vscode.window.showWarningMessage(`生成实际数据结构文件失败: ${dsError}，将继续生成代码...`)
+                    }
+                }
+                
                 const lastNode = targetRecord.getLastNode()
 				const fileContent = fs.readFileSync(lastNode.filePath, 'utf8')
 				const prompt = await openaiHelper.getGenerateCodePrompt(fileContent, lastNode.description, language, rootPath)
@@ -281,10 +305,6 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				vscode.window.showInformationMessage(`代码已生成，文件已保存: ${path.basename(generatedFilePath)}`)
 
                 // Synchronize seq.json file.
-                const relativePath = path.relative(settings.getAiPath(), rootPath)
-                const currentModuleName = relativePath.split(path.sep).join('.')
-                const sequence = targetRecord.projectHandler.getLeafModuleSequence()
-                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
                 targetRecord.projectHandler.setOnGoingModule(seqIndex + 1)
                 currentRecord = targetRecord
                 currentRecord.fireUpdate()

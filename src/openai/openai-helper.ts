@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { z } from 'zod';
 import { validateWithSchema } from './schemas';
-import { getAzureOpenAIConfig } from '../settings/settings';
+import { getAzureOpenAIConfig, getAiPath } from '../settings/settings';
 
 dotenv.config();
 
@@ -259,11 +259,12 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
         dependenciesCode = await getDependencyModulesCode(currentModulePath,'pseudocode');
     }
 
-    // 获取通用数据结构内容
+    // 获取通用数据结构内容（JSON 格式）
     let commonDSContent = '';
     if (commonDSPath && fs.existsSync(commonDSPath)) {
         try {
             commonDSContent = fs.readFileSync(commonDSPath, 'utf-8');
+            console.log('[getGlobalRefinePrompt] 成功读取通用数据结构 JSON 文件');
         } catch (error) {
             console.error('读取通用数据结构失败:', error);
         }
@@ -286,7 +287,7 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
         let userPrompt = `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n`;
 
         if (commonDSContent) {
-            userPrompt += `通用数据结构定义：\n${commonDSContent}\n\n`;
+            userPrompt += `通用数据结构定义（JSON 格式）：\n${commonDSContent}\n\n`;
         }
 
         if (dependenciesCode) {
@@ -377,7 +378,7 @@ export async function getLocalRefinePrompt(
 } 
 
 /**
- * 代码生成提示词 - 从伪代码生成 Python 代码
+ * 代码生成提示词 - 从伪代码生成实际代码
  */
 export async function getGenerateCodePrompt(fileContent: string, lastGranularity: string, language: string = 'python', currentModulePath?: string): Promise<{ system: string; user: string }> {
     // 获取依赖模块代码 - 代码生成时需要实际代码
@@ -386,9 +387,41 @@ export async function getGenerateCodePrompt(fileContent: string, lastGranularity
         dependenciesCode = await getDependencyModulesCode(currentModulePath, 'actual');
     }
 
-    const userPrompt = dependenciesCode
-        ? `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n**依赖模块代码（这些模块已经实现，请不要重新实现）**：${dependenciesCode}\n\n**重要提醒**：\n1. 上面列出的依赖模块已经存在并实现完毕，你只需要 import 它们并调用即可\n2. 请在生成的代码开头添加正确的 import 语句来导入这些依赖模块\n3. **绝对不要**在你生成的代码中重新定义或实现这些依赖模块的类和函数\n4. 调用依赖模块时，请使用它们在伪代码中显示的实际函数签名\n\n请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`
-        : `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。代码应完全对应伪代码的逻辑流程。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`;
+    // 获取实际数据结构文件内容
+    let actualDataStructureCode = '';
+    if (currentModulePath) {
+        // 从当前模块路径找到项目根路径
+        const aiPath = getAiPath();
+        const relativePath = path.relative(aiPath, currentModulePath);
+        const pathParts = relativePath.split(path.sep);
+        
+        if (pathParts.length > 0) {
+            const projectRootPath = path.join(aiPath, pathParts[0]);
+            
+            // 尝试读取实际数据结构文件
+            const { getActualDataStructureContent } = require('../tools/actual-datastructure-generator');
+            actualDataStructureCode = getActualDataStructureContent(projectRootPath, language);
+            
+            if (actualDataStructureCode) {
+                console.log('[getGenerateCodePrompt] 成功读取实际数据结构文件');
+            } else {
+                console.log('[getGenerateCodePrompt] 未找到实际数据结构文件');
+            }
+        }
+    }
+
+    // 构建用户提示词
+    let userPrompt = `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n`;
+    
+    if (actualDataStructureCode) {
+        userPrompt += `**项目的实际数据结构定义（已生成的代码）**：\n${actualDataStructureCode}\n\n**关于数据结构的重要说明**：\n1. 上述数据结构代码已经存在于项目根目录中\n2. 请在生成的代码开头使用 import 语句导入需要的数据结构\n3. **绝对不要**重新定义这些数据结构\n4. 直接使用已定义的数据结构类型\n\n`;
+    }
+    
+    if (dependenciesCode) {
+        userPrompt += `**依赖模块代码（这些模块已经实现，请不要重新实现）**：${dependenciesCode}\n\n**重要提醒**：\n1. 上面列出的依赖模块已经存在并实现完毕，你只需要 import 它们并调用即可\n2. 请在生成的代码开头添加正确的 import 语句来导入这些依赖模块\n3. **绝对不要**在你生成的代码中重新定义或实现这些依赖模块的类和函数\n4. 调用依赖模块时，请使用它们在伪代码中显示的实际函数签名\n\n`;
+    }
+    
+    userPrompt += `请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`;
 
     return {
         system: `你是一个专业的 ${language} 代码生成专家。你的任务是根据提供的伪代码生成可运行的 ${language} 代码。
@@ -400,12 +433,14 @@ export async function getGenerateCodePrompt(fileContent: string, lastGranularity
 4. 遵循该语言的最佳实践和代码规范
 5. 添加清晰的注释对应伪代码步骤
 
-**关于依赖模块的处理（非常重要）：**
-- 如果用户提供了依赖模块的代码实现，说明这些模块**已经存在**
-- **绝对不要重新实现**这些依赖模块的代码
-- 必须在代码开头使用 import 语句导入这些依赖模块
-- 调用依赖模块时，使用它们实际的类名和函数名
-- 例如：如果依赖模块是 cal.Core，应该写 "from Core import Core" 然后调用 "Core.add()"，而不是重新定义 Core 类
+**关于数据结构和依赖模块的处理（非常重要）：**
+- 如果用户提供了项目的实际数据结构定义，这些数据结构**已经存在**于项目根目录
+- 如果用户提供了依赖模块的代码实现，这些模块**已经存在**
+- **绝对不要重新实现**这些数据结构或依赖模块的代码
+- 必须在代码开头使用 import 语句导入这些数据结构和依赖模块
+- 例如：
+  - 数据结构：如果 data_structures.py 中定义了 User 类，应该写 "from data_structures import User"
+  - 依赖模块：如果依赖模块是 cal.Core，应该写 "from Core import Core" 然后调用 "Core.add()"
 
 重要：请直接返回生成的完整、可运行的 ${language} 代码，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`${language} 等），不要添加任何额外的格式化标记，只返回纯代码。`,
         user: userPrompt
@@ -484,6 +519,30 @@ export async function getLeafModules(leafModulesPath:string, requirementsPath:st
     const commonDSContent = new TextDecoder().decode(commonDSContentBytes);
     
     const userPrompt = `原始需求文档：\n${requirementsContent}\n\n当前系统架构（包含所有模块的 JSON 列表）：\n${modulesContent}\n\n通用数据结构定义：\n${commonDSContent}\n\n请直接返回符合要求的 JSON 数组，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+    
+    return {
+        system: systemPrompt,
+        user: userPrompt
+    };
+}
+
+/**
+ * 生成实际数据结构代码的提示词
+ * @param commonDSJsonContent common_data_structures.json 的内容
+ * @param language 目标编程语言（如 'python', 'java'）
+ * @param context VSCode extension context
+ * @returns 包含 system 和 user 提示词的对象
+ */
+export async function getActualDataStructurePrompt(
+    commonDSJsonContent: string,
+    language: string,
+    context: vscode.ExtensionContext
+): Promise<{ system: string; user: string }> {
+    const systemPromptPath = context.asAbsolutePath('resources/prompts/commonDataStructure.md');
+    const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
+    const systemPrompt = new TextDecoder().decode(systemPromptBytes);
+    
+    const userPrompt = `Source JSON（通用数据结构定义）：\n${commonDSJsonContent}\n\nTarget Language: ${language}\n\n请将上述 JSON 定义的所有数据结构转换为 ${language} 语言的纯数据代码。请直接返回代码，不要使用 markdown 代码块标记（如 \`\`\`），只返回纯代码内容。`;
     
     return {
         system: systemPrompt,
