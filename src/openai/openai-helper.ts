@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { z } from 'zod';
 import { validateWithSchema } from './schemas';
+import { getAzureOpenAIConfig } from '../settings/settings';
 
 dotenv.config();
 
@@ -15,42 +16,7 @@ let openaiClient: AzureOpenAI | undefined;
  */
 async function initializeOpenAI(): Promise<AzureOpenAI> {
     if (!openaiClient) {
-        const config = vscode.workspace.getConfiguration('codeRefinement');
-        let endpoint = process.env.AZURE_OPENAI_ENDPOINT || config.get<string>('azureOpenAI.endpoint');
-        let apiKey = process.env.AZURE_OPENAI_API_KEY || config.get<string>('azureOpenAI.apiKey');
-        
-        if (!endpoint || !apiKey) {
-            const inputKey = await vscode.window.showInputBox({
-                prompt: '请输入你的 Azure OpenAI API Key',
-                placeHolder: 'sk-...',
-                password: true
-            });
-            if (!inputKey) {
-                throw new Error('API Key 未提供');
-            }
-            
-            const inputEndpoint = await vscode.window.showInputBox({
-                prompt: '请输入你的 Azure OpenAI 端点',
-                placeHolder: 'https://xxx.openai.azure.com/',
-                value: endpoint || 'https://mygavin.openai.azure.com/'
-            });
-            if (!inputEndpoint) {
-                throw new Error('Endpoint 未提供');
-            }
-            
-            // 询问是否保存配置
-            const saveConfig = await vscode.window.showQuickPick(['是', '否'], {
-                placeHolder: '是否保存配置到设置中？下次无需重复输入'
-            });
-            
-            if (saveConfig === '是') {
-                await config.update('azureOpenAI.apiKey', inputKey, vscode.ConfigurationTarget.Global);
-                await config.update('azureOpenAI.endpoint', inputEndpoint, vscode.ConfigurationTarget.Global);
-            }
-            
-            apiKey = inputKey;
-            endpoint = inputEndpoint;
-        }
+        const { endpoint, apiKey } = await getAzureOpenAIConfig();
         
         openaiClient = new AzureOpenAI({
             endpoint,

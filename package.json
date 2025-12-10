@@ -16,28 +16,6 @@
     "configuration": {
       "title": "AiProgram",
       "properties": {
-        "ai.ApiKey": {
-          "type": "string",
-          "default": "",
-          "scope": "application",
-          "markdownDescription": "Your personal OpenAI API key. If you don't have one, generate a new one [here](https://beta.openai.com/account/api-keys).\n\nDon't forget to [restart your extension](command:workbench.action.reloadWindow) once you finished configuring so that your extension gets loaded with the new configurations."
-        },
-        "ai.models": {
-          "type": "string",
-          "default": "ChatGPT",
-          "enum": [
-            "text-davinci-003",
-            "ChatGPT",
-            "gpt-4",
-            "gpt-4o"
-          ],
-          "enumDescriptions": [
-            "GPT-3 models can understand and generate natural language.",
-            "Large language model trained by OpenAI that is optimized for dialogue.",
-            "Large language model that performs better than ChatGPT. Only available for people that have access to GPT4."
-          ],
-          "markdownDescription": "Choose the OpenAI model you want to use for generating your AI responses.\n\nYou can find more details about each model and their pricing [here](https://beta.openai.com/docs/models)."
-        },
         "ai.path": {
           "type": "string",
           "default": "",
