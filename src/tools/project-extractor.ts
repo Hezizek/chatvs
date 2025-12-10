@@ -69,7 +69,20 @@ export async function extractProject(projectRootPath: string, language: string =
 
     fs.mkdirSync(outputProjectPath, { recursive: true });
     
-    // 4. 遍历叶子模块，复制最新生成的代码
+    // 4. 复制实际数据结构文件（如果存在）
+    const { checkActualDataStructureExists } = require('./actual-datastructure-generator');
+    const actualDSFilePath = checkActualDataStructureExists(projectRootPath, language);
+    
+    if (actualDSFilePath) {
+        const dsFileName = path.basename(actualDSFilePath);
+        const destDSPath = path.join(outputProjectPath, dsFileName);
+        fs.copyFileSync(actualDSFilePath, destDSPath);
+        console.log(`[extractProject] 已复制实际数据结构文件: ${dsFileName}`);
+    } else {
+        console.log(`[extractProject] 未找到实际数据结构文件，跳过复制`);
+    }
+    
+    // 5. 遍历叶子模块，复制最新生成的代码
     for (const module of leafModules) {
         // 模块相对路径转为 parts: "ProjectName.Module.Submodule" -> ['ProjectName', 'Module', 'Submodule']
         const relativeModuleParts = module.relativePath.split('.');
@@ -132,7 +145,7 @@ export async function extractProject(projectRootPath: string, language: string =
         fs.copyFileSync(reqPath, path.join(outputProjectPath, 'project_requirements.txt'));
     }
 
-    // 5. 提示用户
+    // 6. 提示用户
     vscode.window.showInformationMessage(`项目提取成功！代码已保存至：${outputProjectPath}`, '在新窗口中打开').then(selection => {
         if (selection === '在新窗口中打开') {
             // [核心修复] 使用 vscode.Uri.file() 将文件系统路径转换为正确的 URI 格式
