@@ -249,6 +249,7 @@ export async function getCommonDS(
             targetNode
         )
 
+        // 将数据结构节点添加到children中，使其在树中可见
         targetNode.children.unshift(commonDSNode)
 
     } catch (error) {
