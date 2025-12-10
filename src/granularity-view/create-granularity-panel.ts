@@ -285,6 +285,15 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         const dsFilePath = await generateActualDataStructure(projectRootPath, language, context)
                         vscode.window.showInformationMessage(`实际数据结构文件已生成: ${path.basename(dsFilePath)}`)
                         console.log('[generateCode] 实际数据结构文件生成成功:', dsFilePath)
+                        
+                        // 刷新树视图以显示新生成的实际数据结构文件
+                        const { DesignmentTreeDataProvider } = await import('../designment-tree-view/designment-tree-data-provider.js')
+                        const treeProvider = DesignmentTreeDataProvider.getInstance()
+                        // 重新加载整个树以确保新文件被扫描到
+                        const { getlocalNodeTree } = await import('../designment-tree-view/designment-tree-persistence.js')
+                        treeProvider.localNodeTree = getlocalNodeTree()
+                        treeProvider.refresh(undefined)
+                        console.log('[generateCode] 已刷新树视图以显示实际数据结构文件')
                     } catch (dsError) {
                         console.error('[generateCode] 生成实际数据结构文件失败:', dsError)
                         vscode.window.showWarningMessage(`生成实际数据结构文件失败: ${dsError}，将继续生成代码...`)

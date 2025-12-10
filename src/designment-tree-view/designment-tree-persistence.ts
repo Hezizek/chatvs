@@ -24,6 +24,7 @@ async function getProjectTreeStructure(fullPath: string): Promise<DirectoryNode>
         NodeType.Project
     )    
 
+    // 检查并添加 common_data_structures.json
     if (fs.existsSync(path.join(fullPath, 'common_data_structures.json'))) {
         const dataStructureNode = new FileNode(
             'Common Data Structures', 
@@ -32,7 +33,22 @@ async function getProjectTreeStructure(fullPath: string): Promise<DirectoryNode>
             projectNode
         )
         projectNode.children.push(dataStructureNode)
-    } 
+    }
+    
+    // 检查并添加实际数据结构文件（data_structures.py, data_structures.java 等）
+    const dataStructureFiles = fs.readdirSync(fullPath).filter(file => 
+        file.startsWith('data_structures.') && !file.endsWith('.json')
+    )
+    
+    dataStructureFiles.forEach(fileName => {
+        const actualDSNode = new FileNode(
+            'Actual Data Structures',
+            path.join(fullPath, fileName),
+            NodeType.DataStructure,
+            projectNode
+        )
+        projectNode.children.push(actualDSNode)
+    })
 
     projectNode.children.push(new FileNode(
         'Project Requirements', 
