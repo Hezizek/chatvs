@@ -271,7 +271,7 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
     }
 
     if (isJsonDesign) {
-        // 针对 JSON 设计文档 -> 生成伪代码的 Prompt (使用json2pse_v1.md)
+        // 针对 JSON 设计文档 -> 生成伪代码的 Prompt (使用json2pse_v3.md)
         // 获取扩展根路径 - 使用__dirname向上查找
         let extensionPath = __dirname;
         while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
@@ -297,7 +297,7 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
         userPrompt += `请直接返回伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
 
         if (!fs.existsSync(json2psePromptPath)) {
-            console.error('找不到json2pse_v1.md文件:', json2psePromptPath);
+            console.error('找不到json2pse_v3.md文件:', json2psePromptPath);
             // 回退到简单的系统提示
             return {
                 system: `你是一个资深的软件架构师和算法工程师。你的任务是将JSON格式的模块设计文档转换为高质量、结构清晰的伪代码。
