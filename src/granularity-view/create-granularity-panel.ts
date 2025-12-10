@@ -277,7 +277,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     const projectRootPath = targetRecord.projectHandler.rootPath
                     
                     try {
-                        const { generateActualDataStructure } = await import('../tools/actual-datastructure-generator')
+                        const { generateActualDataStructure } = await import('../tools/actual-datastructure-generator.js')
                         const dsFilePath = await generateActualDataStructure(projectRootPath, language, context)
                         vscode.window.showInformationMessage(`实际数据结构文件已生成: ${path.basename(dsFilePath)}`)
                         console.log('[generateCode] 实际数据结构文件生成成功:', dsFilePath)
