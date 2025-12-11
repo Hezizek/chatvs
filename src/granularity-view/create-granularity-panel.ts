@@ -40,12 +40,12 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     )
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('refinement.globalRefine', async () => {
+        vscode.commands.registerCommand('refinement.json2pse', async () => {
 
             assert(currentRecord, 'No usable record for granularity panel.')
             const targetRecord: GranularityRecord = currentRecord
 
-            vscode.window.showInformationMessage('正在执行全局精化...')
+            vscode.window.showInformationMessage('正在将JSON设计转换为伪代码...')
 
             try {
                 const rootPath = targetRecord.getRootPath()
@@ -57,7 +57,60 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const projectRootPath = targetRecord.projectHandler.rootPath
                 const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
 
-                const prompt = await openaiHelper.getGlobalRefinePrompt(fileContent, rootPath, commonDSPath)
+                const prompt = await openaiHelper.getJson2PsePrompt(fileContent, rootPath, commonDSPath)
+                
+                // It will take long here, where currentRecord may change.
+                const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
+
+                const timestamp = Date.now()
+                const generatedFilePath = path.join(rootPath, `pseudotrans_json2pse_${timestamp}.txt`)
+            
+                fs.writeFileSync(generatedFilePath, result, 'utf8')
+                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, false)
+
+                // Open generated file.
+                const doc = await vscode.workspace.openTextDocument(generatedFilePath)
+				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
+
+                // Switch back to the corresponding module.
+                currentRecord = targetRecord
+                currentRecord.fireUpdate()
+
+                vscode.window.showInformationMessage(`JSON转伪代码完成，文件已保存: ${path.basename(generatedFilePath)}`)
+            } catch (err) {
+				vscode.window.showErrorMessage(`JSON转伪代码失败: ${err}`);
+			}
+        })
+    )
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.globalRefine', async (payload) => {
+
+            assert(currentRecord, 'No usable record for granularity panel.')
+            const targetRecord: GranularityRecord = currentRecord
+
+            const refineLevel = payload && payload.refineLevel ? payload.refineLevel : 'medium'
+
+            vscode.window.showInformationMessage(`正在执行全局精化（${refineLevel === 'detailed' ? '细致' : refineLevel === 'coarse' ? '粗糙' : '中等'}）...`)
+
+            try {
+                const rootPath = targetRecord.getRootPath()
+                const lastNode = targetRecord.getLastNode()
+                const targetFilePath = lastNode.filePath
+                const fileContent = fs.readFileSync(targetFilePath, 'utf8')
+
+                // 获取项目根路径并构建通用数据结构路径
+                const projectRootPath = targetRecord.projectHandler.rootPath
+                const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
+
+                let prompt
+                if (refineLevel === 'detailed') {
+                    prompt = await openaiHelper.getGlobalRefinePromptDetailed(fileContent, rootPath, commonDSPath)
+                } else if (refineLevel === 'coarse') {
+                    prompt = await openaiHelper.getGlobalRefinePromptCoarse(fileContent, rootPath, commonDSPath)
+                } else {
+                    prompt = await openaiHelper.getGlobalRefinePromptMedium(fileContent, rootPath, commonDSPath)
+                }
                 
                 // It will take long here, where currentRecord may change.
                 const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
@@ -111,7 +164,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const startLine = selection.start.line + 1 
                 const endLine = selection.end.line + 1
 
-                const prompt = await openaiHelper.getLocalRefinePrompt(fileContent, startLine, endLine, selectedCode, rootPath)
+                // 获取项目根路径并构建通用数据结构路径
+                const projectRootPath = targetRecord.projectHandler.rootPath
+                const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
+                
+                const prompt = await openaiHelper.getLocalRefinePrompt(fileContent, startLine, endLine, selectedCode, rootPath, commonDSPath)
                 const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
                 const refinedContent = cleanLLMResponse(result)
 
@@ -263,6 +320,39 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
 			try {
                 const rootPath = targetRecord.getRootPath()
+                
+                // 检查是否为第一个模块（即序列中的第 0 个）
+                const relativePath = path.relative(settings.getAiPath(), rootPath)
+                const currentModuleName = relativePath.split(path.sep).join('.')
+                const sequence = targetRecord.projectHandler.getLeafModuleSequence()
+                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
+                const isFirstModule = (seqIndex === 0)
+                
+                // 如果是第一个模块，先生成实际数据结构文件
+                if (isFirstModule) {
+                    console.log('[generateCode] 检测到第一个模块，开始生成实际数据结构文件...')
+                    const projectRootPath = targetRecord.projectHandler.rootPath
+                    
+                    try {
+                        const { generateActualDataStructure } = await import('../tools/actual-datastructure-generator.js')
+                        const dsFilePath = await generateActualDataStructure(projectRootPath, language, context)
+                        vscode.window.showInformationMessage(`实际数据结构文件已生成: ${path.basename(dsFilePath)}`)
+                        console.log('[generateCode] 实际数据结构文件生成成功:', dsFilePath)
+                        
+                        // 刷新树视图以显示新生成的实际数据结构文件
+                        const { DesignmentTreeDataProvider } = await import('../designment-tree-view/designment-tree-data-provider.js')
+                        const treeProvider = DesignmentTreeDataProvider.getInstance()
+                        // 重新加载整个树以确保新文件被扫描到
+                        const { getlocalNodeTree } = await import('../designment-tree-view/designment-tree-persistence.js')
+                        treeProvider.localNodeTree = getlocalNodeTree()
+                        treeProvider.refresh(undefined)
+                        console.log('[generateCode] 已刷新树视图以显示实际数据结构文件')
+                    } catch (dsError) {
+                        console.error('[generateCode] 生成实际数据结构文件失败:', dsError)
+                        vscode.window.showWarningMessage(`生成实际数据结构文件失败: ${dsError}，将继续生成代码...`)
+                    }
+                }
+                
                 const lastNode = targetRecord.getLastNode()
 				const fileContent = fs.readFileSync(lastNode.filePath, 'utf8')
 				const prompt = await openaiHelper.getGenerateCodePrompt(fileContent, lastNode.description, language, rootPath)
@@ -281,10 +371,6 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				vscode.window.showInformationMessage(`代码已生成，文件已保存: ${path.basename(generatedFilePath)}`)
 
                 // Synchronize seq.json file.
-                const relativePath = path.relative(settings.getAiPath(), rootPath)
-                const currentModuleName = relativePath.split(path.sep).join('.')
-                const sequence = targetRecord.projectHandler.getLeafModuleSequence()
-                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
                 targetRecord.projectHandler.setOnGoingModule(seqIndex + 1)
                 currentRecord = targetRecord
                 currentRecord.fireUpdate()
@@ -318,18 +404,31 @@ export function openGranularityWebview(rootPath: string) {
         assert(targetMod, `无法在模块列表中找到模块: ${path.basename(rootPath)}`)
         const status = targetMod.status
 
+        // 获取当前粒度（根据活动节点的描述判断）
+        const activeNode = nodes.find(n => n.isActive)
+        let currentGranularity = -1
+        if (activeNode && activeNode.description.includes('粒度 0')) {
+            currentGranularity = 0
+        } else if (activeNode) {
+            // 尝试从描述中提取粒度数字，例如 "粒度 1", "粒度 2" 等
+            const match = activeNode.description.match(/粒度\s*(\d+)/)
+            if (match) {
+                currentGranularity = parseInt(match[1], 10)
+            }
+        }
+
         GranularityViewProvider.postMessage({
             type: 'updateView', 
             data: {
                 nodes: nodes,
                 moduleSequence: sequence.map(mod => mod.relativePath),
                 currentModule: currentModuleName,
-                moduleStatus: status
+                moduleStatus: status,
+                currentGranularity: currentGranularity
             }
         })
 
         // Open content for the active node if it exists.
-        const activeNode = nodes.find(n => n.isActive)
         if (activeNode && activeNode.filePath) {
             try {
                 const doc = await vscode.workspace.openTextDocument(activeNode.filePath)

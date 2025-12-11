@@ -13,7 +13,12 @@
 
         <!-- Displayed for ongoing modules. -->
         <div id="button-bar-ongoing" class="button-bar-ongoing">
-            <button onclick="sendCommand('refinement.globalRefine')">全局精化</button>
+            <button onclick="sendGlobalRefineCommand()">全局精化</button>
+            <select id="refine-level-select" title="选择精化级别" class="refine-level-select">
+                <option value="medium">中等</option>
+                <option value="detailed">细致</option>
+                <option value="coarse">粗糙</option>
+            </select>
             <button onclick="sendCommand('refinement.localRefine')">局部精化</button>
             <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
             <button onclick="sendGenerateCommand()">生成代码</button>
@@ -31,6 +36,11 @@
         <!-- Displayed for completed modules. -->
         <div id="button-bar-completed" class="button-bar-completed">
             <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
+        </div>
+
+        <!-- Displayed for granularity 0 (JSON design stage). -->
+        <div id="button-bar-granularity0" class="button-bar-granularity0">
+            <button onclick="sendCommand('refinement.json2pse')">自然语言json转伪代码</button>
         </div>
 
         <!-- Displayed for pending modules. -->
@@ -59,10 +69,22 @@
         // [新增] 获取 button bar 容器 DOM 以控制显示
         const buttonBarOngoing = document.getElementById('button-bar-ongoing');
         const buttonBarCompleted = document.getElementById('button-bar-completed');
+        const buttonBarGranularity0 = document.getElementById('button-bar-granularity0');
         const buttonBarPending = document.getElementById('button-bar-pending');
 
         function sendCommand(commandId) {
             vscode.postMessage({ type: 'executeCommand', commandId: commandId });
+        }
+
+        // 专门用于发送全局精化命令的函数，携带精化级别参数
+        function sendGlobalRefineCommand() {
+            const select = document.getElementById('refine-level-select');
+            const refineLevel = select.value;
+            vscode.postMessage({
+                type: 'executeCommand',
+                commandId: 'refinement.globalRefine',
+                payload: { refineLevel: refineLevel }
+            });
         }
 
         // 专门用于发送生成代码命令的函数，携带语言参数
@@ -80,8 +102,8 @@
             const msg = event.data;
             switch (msg.type) {
                 case 'updateView':
-                    const { nodes, moduleSequence, currentModule, moduleStatus } = msg.data;
-                    renderButtonBar(nodes, moduleStatus);                      // 根据模块状态判断是否允许用户进行精化
+                    const { nodes, moduleSequence, currentModule, moduleStatus, currentGranularity } = msg.data;
+                    renderButtonBar(nodes, moduleStatus, currentGranularity);  // 根据模块状态和当前粒度判断显示哪个按钮组
                     renderChain(nodes);                                 // 渲染粒度历史
                     renderModuleChain(moduleSequence, currentModule);   // 渲染模块顺序
                     break;
@@ -179,20 +201,38 @@
             });
         }
 
-        function renderButtonBar(nodes, moduleStatus) {
+        function renderButtonBar(nodes, moduleStatus, currentGranularity) {
             // If no active node, hide all buttons.
             const hasActive = nodes.some(node => node.isActive);
 
             if (!hasActive) {
-                updateButtonBar('none', 'none', 'block');
+                updateButtonBar('none', 'none', 'none', 'block');
                 buttonBarPending.textContent = 'No selected granularity.';
                 return;
             }
 
+            // 找到当前激活的节点
+            const activeNodeIndex = nodes.findIndex(node => node.isActive);
+            const isLastNode = (activeNodeIndex === nodes.length - 1);
+
+            // 如果用户查看的不是最后一个粒度（即在查看历史粒度），只显示"回退粒度"按钮
+            if (!isLastNode) {
+                updateButtonBar('none', 'flex', 'none', 'none');
+                return;
+            }
+
+            // 以下逻辑仅在用户查看最后一个粒度时才执行
+
+            // 如果当前粒度为0、模块状态为ongoing、且是最后一个节点，只显示json2pse按钮
+            if (currentGranularity === 0 && moduleStatus === 'ongoing') {
+                updateButtonBar('none', 'none', 'flex', 'none');
+                return;
+            }
+
             const displayMap = {
-                'ongoing':      ['flex', 'none', 'none'],
-                'completed':    ['none', 'flex', 'none'],
-                'pending':      ['none', 'none', 'block']
+                'ongoing':      ['flex', 'none', 'none', 'none'],
+                'completed':    ['none', 'flex', 'none', 'none'],
+                'pending':      ['none', 'none', 'none', 'block']
             };
 
             const cfg = displayMap[moduleStatus]
@@ -201,16 +241,17 @@
                 return;
             } 
             
-            updateButtonBar(cfg[0], cfg[1], cfg[2]);
+            updateButtonBar(cfg[0], cfg[1], cfg[2], cfg[3]);
 
             if (moduleStatus === 'pending') {
                 buttonBarPending.textContent = 'Please refine preceding modules first.';
             }
         }
 
-        function updateButtonBar(ongoingBarState, completedBarState, pendingBarState) {
+        function updateButtonBar(ongoingBarState, completedBarState, granularity0BarState, pendingBarState) {
             buttonBarOngoing.style.display = ongoingBarState;
             buttonBarCompleted.style.display = completedBarState;
+            buttonBarGranularity0.style.display = granularity0BarState;
             buttonBarPending.style.display = pendingBarState;
         }
 
