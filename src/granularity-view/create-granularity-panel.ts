@@ -40,6 +40,50 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     )
 
     context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.json2pse', async () => {
+
+            assert(currentRecord, 'No usable record for granularity panel.')
+            const targetRecord: GranularityRecord = currentRecord
+
+            vscode.window.showInformationMessage('正在将JSON设计转换为伪代码...')
+
+            try {
+                const rootPath = targetRecord.getRootPath()
+                const lastNode = targetRecord.getLastNode()
+                const targetFilePath = lastNode.filePath
+                const fileContent = fs.readFileSync(targetFilePath, 'utf8')
+
+                // 获取项目根路径并构建通用数据结构路径
+                const projectRootPath = targetRecord.projectHandler.rootPath
+                const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
+
+                const prompt = await openaiHelper.getJson2PsePrompt(fileContent, rootPath, commonDSPath)
+                
+                // It will take long here, where currentRecord may change.
+                const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
+
+                const timestamp = Date.now()
+                const generatedFilePath = path.join(rootPath, `pseudotrans_json2pse_${timestamp}.txt`)
+            
+                fs.writeFileSync(generatedFilePath, result, 'utf8')
+                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, false)
+
+                // Open generated file.
+                const doc = await vscode.workspace.openTextDocument(generatedFilePath)
+				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One });
+
+                // Switch back to the corresponding module.
+                currentRecord = targetRecord
+                currentRecord.fireUpdate()
+
+                vscode.window.showInformationMessage(`JSON转伪代码完成，文件已保存: ${path.basename(generatedFilePath)}`)
+            } catch (err) {
+				vscode.window.showErrorMessage(`JSON转伪代码失败: ${err}`);
+			}
+        })
+    )
+
+    context.subscriptions.push(
         vscode.commands.registerCommand('refinement.globalRefine', async () => {
 
             assert(currentRecord, 'No usable record for granularity panel.')
@@ -351,18 +395,31 @@ export function openGranularityWebview(rootPath: string) {
         assert(targetMod, `无法在模块列表中找到模块: ${path.basename(rootPath)}`)
         const status = targetMod.status
 
+        // 获取当前粒度（根据活动节点的描述判断）
+        const activeNode = nodes.find(n => n.isActive)
+        let currentGranularity = -1
+        if (activeNode && activeNode.description.includes('粒度 0')) {
+            currentGranularity = 0
+        } else if (activeNode) {
+            // 尝试从描述中提取粒度数字，例如 "粒度 1", "粒度 2" 等
+            const match = activeNode.description.match(/粒度\s*(\d+)/)
+            if (match) {
+                currentGranularity = parseInt(match[1], 10)
+            }
+        }
+
         GranularityViewProvider.postMessage({
             type: 'updateView', 
             data: {
                 nodes: nodes,
                 moduleSequence: sequence.map(mod => mod.relativePath),
                 currentModule: currentModuleName,
-                moduleStatus: status
+                moduleStatus: status,
+                currentGranularity: currentGranularity
             }
         })
 
         // Open content for the active node if it exists.
-        const activeNode = nodes.find(n => n.isActive)
         if (activeNode && activeNode.filePath) {
             try {
                 const doc = await vscode.workspace.openTextDocument(activeNode.filePath)

@@ -247,16 +247,16 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
 }
 
 /**
- * 全局精化提示词 - 对伪代码的全局优化
+ * JSON转伪代码提示词 - 将JSON设计文档转换为伪代码（粒度0专用）
+ * @param fileContent JSON设计文档内容
+ * @param currentModulePath 当前模块路径
+ * @param commonDSPath 通用数据结构路径
  */
-export async function getGlobalRefinePrompt(fileContent: string, currentModulePath?: string, commonDSPath?: string): Promise<{ system: string; user: string }> {
-    // 简单的启发式判断：如果去除首尾空格后以 '{' 开头，则视为 JSON 设计文档
-    const isJsonDesign = fileContent.trim().startsWith('{');
-
+export async function getJson2PsePrompt(fileContent: string, currentModulePath?: string, commonDSPath?: string): Promise<{ system: string; user: string }> {
     // 获取依赖模块代码
     let dependenciesCode = '';
     if (currentModulePath) {
-        dependenciesCode = await getDependencyModulesCode(currentModulePath,'pseudocode');
+        dependenciesCode = await getDependencyModulesCode(currentModulePath, 'pseudocode');
     }
 
     // 获取通用数据结构内容（JSON 格式）
@@ -264,43 +264,41 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
     if (commonDSPath && fs.existsSync(commonDSPath)) {
         try {
             commonDSContent = fs.readFileSync(commonDSPath, 'utf-8');
-            console.log('[getGlobalRefinePrompt] 成功读取通用数据结构 JSON 文件');
+            console.log('[getJson2PsePrompt] 成功读取通用数据结构 JSON 文件');
         } catch (error) {
             console.error('读取通用数据结构失败:', error);
         }
     }
 
-    if (isJsonDesign) {
-        // 针对 JSON 设计文档 -> 生成伪代码的 Prompt (使用json2pse_v3.md)
-        // 获取扩展根路径 - 使用__dirname向上查找
-        let extensionPath = __dirname;
-        while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
-            const parent = path.dirname(extensionPath);
-            if (parent === extensionPath) {
-                break;
-            }
-            extensionPath = parent;
+    // 获取扩展根路径 - 使用__dirname向上查找
+    let extensionPath = __dirname;
+    while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
+        const parent = path.dirname(extensionPath);
+        if (parent === extensionPath) {
+            break;
         }
-        
-        const json2psePromptPath = path.join(extensionPath, 'resources', 'prompts', 'json2pse_v3.md');
-        
-        let userPrompt = `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n`;
+        extensionPath = parent;
+    }
+    
+    const json2psePromptPath = path.join(extensionPath, 'resources', 'prompts', 'json2pse_v3.md');
+    
+    let userPrompt = `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n`;
 
-        if (commonDSContent) {
-            userPrompt += `通用数据结构定义（JSON 格式）：\n${commonDSContent}\n\n`;
-        }
+    if (commonDSContent) {
+        userPrompt += `通用数据结构定义（JSON 格式）：\n${commonDSContent}\n\n`;
+    }
 
-        if (dependenciesCode) {
-            userPrompt += `以下是该模块依赖的上游模块的伪代码实现，在生成目标模块伪代码时请参考这些依赖模块的函数签名和接口：${dependenciesCode}\n\n`;
-        }
+    if (dependenciesCode) {
+        userPrompt += `以下是该模块依赖的上游模块的伪代码实现，在生成目标模块伪代码时请参考这些依赖模块的函数签名和接口：${dependenciesCode}\n\n`;
+    }
 
-        userPrompt += `请直接返回伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+    userPrompt += `请直接返回伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
 
-        if (!fs.existsSync(json2psePromptPath)) {
-            console.error('找不到json2pse_v3.md文件:', json2psePromptPath);
-            // 回退到简单的系统提示
-            return {
-                system: `你是一个资深的软件架构师和算法工程师。你的任务是将JSON格式的模块设计文档转换为高质量、结构清晰的伪代码。
+    if (!fs.existsSync(json2psePromptPath)) {
+        console.error('找不到json2pse_v3.md文件:', json2psePromptPath);
+        // 回退到简单的系统提示
+        return {
+            system: `你是一个资深的软件架构师和算法工程师。你的任务是将JSON格式的模块设计文档转换为高质量、结构清晰的伪代码。
 
 请遵循以下规则：
 1. **完整性**：生成的伪代码必须严格包含JSON设计文档中的所有信息。
@@ -309,23 +307,37 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
 4. **依赖一致性**：在调用依赖模块时，必须参考提供的上游依赖模块的实际函数签名。
 
 重要：请直接返回生成的完整伪代码内容，不要使用markdown代码块标记，只返回纯文本的伪代码。`,
-                user: userPrompt
-            };
-        }
-        const json2psePrompt = fs.readFileSync(json2psePromptPath, 'utf-8');
-
-        return {
-            system: json2psePrompt,
             user: userPrompt
         };
-    } else {
-        // 针对 现有伪代码 -> 优化的 Prompt (保持原有逻辑，稍作微调以适应不同输入风格)
-        const userPrompt = dependenciesCode
-            ? `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n**依赖模块的伪代码实现（这些模块已存在，不需要重新实现）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，在精化时只需调用它们，不要修改或重新实现这些依赖模块\n- 请仔细检查当前伪代码中调用依赖模块的地方，确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n- 如果发现调用不一致的地方，请修正\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
-            : `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+    }
+    const json2psePrompt = fs.readFileSync(json2psePromptPath, 'utf-8');
 
-        return {
-            system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行全局精化，帮助改进其清晰性、逻辑性和完整性。
+    return {
+        system: json2psePrompt,
+        user: userPrompt
+    };
+}
+
+/**
+ * 全局精化提示词 - 对伪代码的全局优化（粒度>0专用）
+ * @param fileContent 伪代码文件内容
+ * @param currentModulePath 当前模块路径
+ * @param commonDSPath 通用数据结构路径
+ */
+export async function getGlobalRefinePrompt(fileContent: string, currentModulePath?: string, commonDSPath?: string): Promise<{ system: string; user: string }> {
+    // 获取依赖模块代码
+    let dependenciesCode = '';
+    if (currentModulePath) {
+        dependenciesCode = await getDependencyModulesCode(currentModulePath, 'pseudocode');
+    }
+
+    // 针对现有伪代码的全局优化
+    const userPrompt = dependenciesCode
+        ? `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n**依赖模块的伪代码实现（这些模块已存在，不需要重新实现）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，在精化时只需调用它们，不要修改或重新实现这些依赖模块\n- 请仔细检查当前伪代码中调用依赖模块的地方，确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n- 如果发现调用不一致的地方，请修正\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
+        : `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+
+    return {
+        system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行全局精化，帮助改进其清晰性、逻辑性和完整性。
 
 请对伪代码的以下方面进行优化：
 1. 逻辑流程清晰性 - 确保流程步骤清晰、易懂
@@ -336,9 +348,8 @@ export async function getGlobalRefinePrompt(fileContent: string, currentModulePa
 6. 依赖一致性 - 如果提供了依赖模块代码，确保调用依赖模块的函数名、参数和返回值与依赖模块的实际定义完全一致
 
 重要：请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`python 等），不要添加任何额外的格式化标记，只返回纯文本的伪代码内容。`,
-            user: userPrompt
-        };
-    }
+        user: userPrompt
+    };
 }
 
 /**

@@ -33,6 +33,11 @@
             <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
         </div>
 
+        <!-- Displayed for granularity 0 (JSON design stage). -->
+        <div id="button-bar-granularity0" class="button-bar-granularity0">
+            <button onclick="sendCommand('refinement.json2pse')">自然语言json转伪代码</button>
+        </div>
+
         <!-- Displayed for pending modules. -->
         <div id="button-bar-pending" class="button-bar-pending">
             Refinement panel is currently disabled.
@@ -59,6 +64,7 @@
         // [新增] 获取 button bar 容器 DOM 以控制显示
         const buttonBarOngoing = document.getElementById('button-bar-ongoing');
         const buttonBarCompleted = document.getElementById('button-bar-completed');
+        const buttonBarGranularity0 = document.getElementById('button-bar-granularity0');
         const buttonBarPending = document.getElementById('button-bar-pending');
 
         function sendCommand(commandId) {
@@ -80,8 +86,8 @@
             const msg = event.data;
             switch (msg.type) {
                 case 'updateView':
-                    const { nodes, moduleSequence, currentModule, moduleStatus } = msg.data;
-                    renderButtonBar(nodes, moduleStatus);                      // 根据模块状态判断是否允许用户进行精化
+                    const { nodes, moduleSequence, currentModule, moduleStatus, currentGranularity } = msg.data;
+                    renderButtonBar(nodes, moduleStatus, currentGranularity);  // 根据模块状态和当前粒度判断显示哪个按钮组
                     renderChain(nodes);                                 // 渲染粒度历史
                     renderModuleChain(moduleSequence, currentModule);   // 渲染模块顺序
                     break;
@@ -179,20 +185,26 @@
             });
         }
 
-        function renderButtonBar(nodes, moduleStatus) {
+        function renderButtonBar(nodes, moduleStatus, currentGranularity) {
             // If no active node, hide all buttons.
             const hasActive = nodes.some(node => node.isActive);
 
             if (!hasActive) {
-                updateButtonBar('none', 'none', 'block');
+                updateButtonBar('none', 'none', 'none', 'block');
                 buttonBarPending.textContent = 'No selected granularity.';
                 return;
             }
 
+            // 优先判断粒度：如果当前粒度为0且模块状态为ongoing，只显示json2pse按钮
+            if (currentGranularity === 0 && moduleStatus === 'ongoing') {
+                updateButtonBar('none', 'none', 'flex', 'none');
+                return;
+            }
+
             const displayMap = {
-                'ongoing':      ['flex', 'none', 'none'],
-                'completed':    ['none', 'flex', 'none'],
-                'pending':      ['none', 'none', 'block']
+                'ongoing':      ['flex', 'none', 'none', 'none'],
+                'completed':    ['none', 'flex', 'none', 'none'],
+                'pending':      ['none', 'none', 'none', 'block']
             };
 
             const cfg = displayMap[moduleStatus]
@@ -201,16 +213,17 @@
                 return;
             } 
             
-            updateButtonBar(cfg[0], cfg[1], cfg[2]);
+            updateButtonBar(cfg[0], cfg[1], cfg[2], cfg[3]);
 
             if (moduleStatus === 'pending') {
                 buttonBarPending.textContent = 'Please refine preceding modules first.';
             }
         }
 
-        function updateButtonBar(ongoingBarState, completedBarState, pendingBarState) {
+        function updateButtonBar(ongoingBarState, completedBarState, granularity0BarState, pendingBarState) {
             buttonBarOngoing.style.display = ongoingBarState;
             buttonBarCompleted.style.display = completedBarState;
+            buttonBarGranularity0.style.display = granularity0BarState;
             buttonBarPending.style.display = pendingBarState;
         }
 

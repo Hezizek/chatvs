@@ -19,7 +19,7 @@ body {
     gap: 15px;
 }
 
-.button-bar-ongoing, .button-bar-completed {
+.button-bar-ongoing, .button-bar-completed, .button-bar-granularity0 {
     flex-shrink: 0;      /* 禁止被压缩，确保始终完整显示 */
     display: none;
     gap: 10px;
