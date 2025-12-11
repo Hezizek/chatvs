@@ -195,8 +195,13 @@
                 return;
             }
 
-            // 优先判断粒度：如果当前粒度为0且模块状态为ongoing，只显示json2pse按钮
-            if (currentGranularity === 0 && moduleStatus === 'ongoing') {
+            // 找到当前激活的节点
+            const activeNodeIndex = nodes.findIndex(node => node.isActive);
+            const isLastNode = (activeNodeIndex === nodes.length - 1);
+
+            // 优先判断粒度：如果当前粒度为0、模块状态为ongoing、且是最后一个节点，只显示json2pse按钮
+            // 这样可以防止用户切换回粒度0后再次点击json2pse生成重复的伪代码
+            if (currentGranularity === 0 && moduleStatus === 'ongoing' && isLastNode) {
                 updateButtonBar('none', 'none', 'flex', 'none');
                 return;
             }
