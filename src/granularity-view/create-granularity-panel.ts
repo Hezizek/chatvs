@@ -104,12 +104,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
 
                 let prompt
-                if (refineLevel === 'detailed') {
-                    prompt = await openaiHelper.getGlobalRefinePromptDetailed(fileContent, rootPath, commonDSPath)
-                } else if (refineLevel === 'coarse') {
+                if (refineLevel === 'coarse') {
                     prompt = await openaiHelper.getGlobalRefinePromptCoarse(fileContent, rootPath, commonDSPath)
                 } else {
-                    prompt = await openaiHelper.getGlobalRefinePromptMedium(fileContent, rootPath, commonDSPath)
+                    // 默认使用 detailed（较细）
+                    prompt = await openaiHelper.getGlobalRefinePromptDetailed(fileContent, rootPath, commonDSPath)
                 }
                 
                 // It will take long here, where currentRecord may change.

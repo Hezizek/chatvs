@@ -387,40 +387,6 @@ export async function getGlobalRefinePromptDetailed(fileContent: string, current
 }
 
 /**
- * 全局精化提示词 - 中等级别（粒度>0专用）
- * @param fileContent 伪代码文件内容
- * @param currentModulePath 当前模块路径
- * @param commonDSPath 通用数据结构路径
- */
-export async function getGlobalRefinePromptMedium(fileContent: string, currentModulePath?: string, commonDSPath?: string): Promise<{ system: string; user: string }> {
-    // 获取依赖模块代码
-    let dependenciesCode = '';
-    if (currentModulePath) {
-        dependenciesCode = await getDependencyModulesCode(currentModulePath, 'pseudocode');
-    }
-
-    // 针对现有伪代码的全局优化
-    const userPrompt = dependenciesCode
-        ? `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n**依赖模块的伪代码实现（这些模块已存在，不需要重新实现）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，在精化时只需调用它们，不要修改或重新实现这些依赖模块\n- 请仔细检查当前伪代码中调用依赖模块的地方，确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n- 如果发现调用不一致的地方，请修正\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
-        : `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
-
-    return {
-        system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行全局精化，帮助改进其清晰性、逻辑性和完整性。
-
-请对伪代码的以下方面进行优化：
-1. 逻辑流程清晰性 - 确保流程步骤清晰、易懂
-2. 算法设计 - 优化算法逻辑和流程
-3. 结构完整性 - 检查是否有遗漏的步骤或分支
-4. 边界条件处理 - 确保处理了所有边界情况
-5. 变量和函数命名 - 确保名称清晰能够表达意图
-6. 依赖一致性 - 如果提供了依赖模块代码，确保调用依赖模块的函数名、参数和返回值与依赖模块的实际定义完全一致
-
-重要：请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`python 等），不要添加任何额外的格式化标记，只返回纯文本的伪代码内容。`,
-        user: userPrompt
-    };
-}
-
-/**
  * 全局精化提示词 - 粗糙级别（粒度>0专用）
  * @param fileContent 伪代码文件内容
  * @param currentModulePath 当前模块路径
