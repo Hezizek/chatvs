@@ -199,9 +199,16 @@
             const activeNodeIndex = nodes.findIndex(node => node.isActive);
             const isLastNode = (activeNodeIndex === nodes.length - 1);
 
-            // 优先判断粒度：如果当前粒度为0、模块状态为ongoing、且是最后一个节点，只显示json2pse按钮
-            // 这样可以防止用户切换回粒度0后再次点击json2pse生成重复的伪代码
-            if (currentGranularity === 0 && moduleStatus === 'ongoing' && isLastNode) {
+            // 如果用户查看的不是最后一个粒度（即在查看历史粒度），只显示"回退粒度"按钮
+            if (!isLastNode) {
+                updateButtonBar('none', 'flex', 'none', 'none');
+                return;
+            }
+
+            // 以下逻辑仅在用户查看最后一个粒度时才执行
+
+            // 如果当前粒度为0、模块状态为ongoing、且是最后一个节点，只显示json2pse按钮
+            if (currentGranularity === 0 && moduleStatus === 'ongoing') {
                 updateButtonBar('none', 'none', 'flex', 'none');
                 return;
             }
