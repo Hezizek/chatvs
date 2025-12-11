@@ -13,7 +13,12 @@
 
         <!-- Displayed for ongoing modules. -->
         <div id="button-bar-ongoing" class="button-bar-ongoing">
-            <button onclick="sendCommand('refinement.globalRefine')">全局精化</button>
+            <button onclick="sendGlobalRefineCommand()">全局精化</button>
+            <select id="refine-level-select" title="选择精化级别" class="refine-level-select">
+                <option value="medium">中等</option>
+                <option value="detailed">细致</option>
+                <option value="coarse">粗糙</option>
+            </select>
             <button onclick="sendCommand('refinement.localRefine')">局部精化</button>
             <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
             <button onclick="sendGenerateCommand()">生成代码</button>
@@ -69,6 +74,17 @@
 
         function sendCommand(commandId) {
             vscode.postMessage({ type: 'executeCommand', commandId: commandId });
+        }
+
+        // 专门用于发送全局精化命令的函数，携带精化级别参数
+        function sendGlobalRefineCommand() {
+            const select = document.getElementById('refine-level-select');
+            const refineLevel = select.value;
+            vscode.postMessage({
+                type: 'executeCommand',
+                commandId: 'refinement.globalRefine',
+                payload: { refineLevel: refineLevel }
+            });
         }
 
         // 专门用于发送生成代码命令的函数，携带语言参数

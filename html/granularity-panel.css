@@ -52,6 +52,22 @@ button:hover {
     background-color: var(--vscode-button-hoverBackground);
 }
 
+.language-select, .refine-level-select {
+    background-color: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
+    outline: none;
+    border-radius: 2px;
+}
+
+.language-select:hover, .refine-level-select:hover {
+    background-color: var(--vscode-dropdown-listBackground);
+}
+
 .granularity-container {
     flex: 1;             /* 霸占剩余的所有垂直空间 */
     overflow-y: auto;    /* 关键：内容超出时，只在这个区域内垂直滚动 */

@@ -84,12 +84,14 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     )
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('refinement.globalRefine', async () => {
+        vscode.commands.registerCommand('refinement.globalRefine', async (payload) => {
 
             assert(currentRecord, 'No usable record for granularity panel.')
             const targetRecord: GranularityRecord = currentRecord
 
-            vscode.window.showInformationMessage('正在执行全局精化...')
+            const refineLevel = payload && payload.refineLevel ? payload.refineLevel : 'medium'
+
+            vscode.window.showInformationMessage(`正在执行全局精化（${refineLevel === 'detailed' ? '细致' : refineLevel === 'coarse' ? '粗糙' : '中等'}）...`)
 
             try {
                 const rootPath = targetRecord.getRootPath()
@@ -101,7 +103,14 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const projectRootPath = targetRecord.projectHandler.rootPath
                 const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
 
-                const prompt = await openaiHelper.getGlobalRefinePrompt(fileContent, rootPath, commonDSPath)
+                let prompt
+                if (refineLevel === 'detailed') {
+                    prompt = await openaiHelper.getGlobalRefinePromptDetailed(fileContent, rootPath, commonDSPath)
+                } else if (refineLevel === 'coarse') {
+                    prompt = await openaiHelper.getGlobalRefinePromptCoarse(fileContent, rootPath, commonDSPath)
+                } else {
+                    prompt = await openaiHelper.getGlobalRefinePromptMedium(fileContent, rootPath, commonDSPath)
+                }
                 
                 // It will take long here, where currentRecord may change.
                 const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
