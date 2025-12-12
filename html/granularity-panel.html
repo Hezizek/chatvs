@@ -15,9 +15,8 @@
         <div id="button-bar-ongoing" class="button-bar-ongoing">
             <button onclick="sendGlobalRefineCommand()">全局精化</button>
             <select id="refine-level-select" title="选择精化级别" class="refine-level-select">
-                <option value="medium">中等</option>
-                <option value="detailed">细致</option>
-                <option value="coarse">粗糙</option>
+                <option value="detailed" selected>较细</option>
+                <option value="coarse">较粗</option>
             </select>
             <button onclick="sendCommand('refinement.localRefine')">局部精化</button>
             <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
@@ -40,7 +39,7 @@
 
         <!-- Displayed for granularity 0 (JSON design stage). -->
         <div id="button-bar-granularity0" class="button-bar-granularity0">
-            <button onclick="sendCommand('refinement.json2pse')">自然语言json转伪代码</button>
+            <button onclick="sendCommand('refinement.json2pse')">生成伪代码</button>
         </div>
 
         <!-- Displayed for pending modules. -->

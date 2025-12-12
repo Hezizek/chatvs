@@ -104,12 +104,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
 
                 let prompt
-                if (refineLevel === 'detailed') {
-                    prompt = await openaiHelper.getGlobalRefinePromptDetailed(fileContent, rootPath, commonDSPath)
-                } else if (refineLevel === 'coarse') {
+                if (refineLevel === 'coarse') {
                     prompt = await openaiHelper.getGlobalRefinePromptCoarse(fileContent, rootPath, commonDSPath)
                 } else {
-                    prompt = await openaiHelper.getGlobalRefinePromptMedium(fileContent, rootPath, commonDSPath)
+                    // 默认使用 detailed（较细）
+                    prompt = await openaiHelper.getGlobalRefinePromptDetailed(fileContent, rootPath, commonDSPath)
                 }
                 
                 // It will take long here, where currentRecord may change.
@@ -406,16 +405,8 @@ export function openGranularityWebview(rootPath: string) {
 
         // 获取当前粒度（根据活动节点的描述判断）
         const activeNode = nodes.find(n => n.isActive)
-        let currentGranularity = -1
-        if (activeNode && activeNode.description.includes('粒度 0')) {
-            currentGranularity = 0
-        } else if (activeNode) {
-            // 尝试从描述中提取粒度数字，例如 "粒度 1", "粒度 2" 等
-            const match = activeNode.description.match(/粒度\s*(\d+)/)
-            if (match) {
-                currentGranularity = parseInt(match[1], 10)
-            }
-        }
+        // 粒度级别 = 节点index - 1 (因为第一个节点index=1表示粒度0)
+        let currentGranularity = activeNode ? activeNode.index - 1 : -1
 
         GranularityViewProvider.postMessage({
             type: 'updateView', 
