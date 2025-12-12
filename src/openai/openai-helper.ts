@@ -560,6 +560,29 @@ export async function getLocalRefinePrompt(
  * 代码生成提示词 - 从伪代码生成实际代码
  */
 export async function getGenerateCodePrompt(fileContent: string, lastGranularity: string, language: string = 'python', currentModulePath?: string): Promise<{ system: string; user: string }> {
+    // 根据语言路由到对应的实现函数
+    switch (language.toLowerCase()) {
+        case 'python':
+            return getGenerateCodePromptForPython(fileContent, lastGranularity, currentModulePath);
+        
+        // 其他语言可以在这里扩展
+        // case 'java':
+        //     return getGenerateCodePromptForJava(fileContent, lastGranularity, currentModulePath);
+        // case 'cpp':
+        // case 'c++':
+        //     return getGenerateCodePromptForCpp(fileContent, lastGranularity, currentModulePath);
+        
+        default:
+            // 回退到通用实现（使用硬编码prompt）
+            console.warn(`[getGenerateCodePrompt] 语言 ${language} 暂未实现专用prompt，使用通用prompt`);
+            return getGenerateCodePromptGeneric(fileContent, lastGranularity, language, currentModulePath);
+    }
+}
+
+/**
+ * Python语言专用：代码生成提示词
+ */
+async function getGenerateCodePromptForPython(fileContent: string, lastGranularity: string, currentModulePath?: string): Promise<{ system: string; user: string }> {
     // 获取依赖模块代码 - 代码生成时需要实际代码
     let dependenciesCode = '';
     if (currentModulePath) {
@@ -569,22 +592,92 @@ export async function getGenerateCodePrompt(fileContent: string, lastGranularity
     // 获取实际数据结构文件内容
     let actualDataStructureCode = '';
     if (currentModulePath) {
-        // 从当前模块路径找到项目根路径
         const aiPath = getAiPath();
         const relativePath = path.relative(aiPath, currentModulePath);
         const pathParts = relativePath.split(path.sep);
         
         if (pathParts.length > 0) {
-            const projectRootPath = path.join(aiPath, pathParts[0]);
-            
-            // 尝试读取实际数据结构文件
+            // 实际数据结构文件存放在 .codes 目录下，而不是 .ai 目录
+            const projectName = pathParts[0];
+            const codeProjectRoot = path.join(aiPath, '.codes', projectName);
             const { getActualDataStructureContent } = await import('../tools/actual-datastructure-generator.js');
-            actualDataStructureCode = getActualDataStructureContent(projectRootPath, language);
+            actualDataStructureCode = getActualDataStructureContent(codeProjectRoot, 'python');
             
             if (actualDataStructureCode) {
-                console.log('[getGenerateCodePrompt] 成功读取实际数据结构文件');
+                console.log('[getGenerateCodePromptForPython] 成功读取实际数据结构文件');
             } else {
-                console.log('[getGenerateCodePrompt] 未找到实际数据结构文件');
+                console.log('[getGenerateCodePromptForPython] 未找到实际数据结构文件');
+            }
+        }
+    }
+
+    // 获取扩展根路径
+    let extensionPath = __dirname;
+    while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
+        const parent = path.dirname(extensionPath);
+        if (parent === extensionPath) {
+            break;
+        }
+        extensionPath = parent;
+    }
+    
+    const promptPath = path.join(extensionPath, 'resources', 'prompts', 'generateCode_python.md');
+    
+    // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
+    let userPrompt = `# Input 1: Target Module Pseudocode\n\n${fileContent}\n\n`;
+    
+    if (actualDataStructureCode) {
+        userPrompt += `# Input 2: Project Data Structures\n\n${actualDataStructureCode}\n\n`;
+    }
+    
+    if (dependenciesCode) {
+        userPrompt += `# Input 3: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
+    }
+    
+    userPrompt += `请根据上述伪代码的整体逻辑生成完整、可运行的 Python 代码。请直接返回 Python 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`;
+
+    if (!fs.existsSync(promptPath)) {
+        console.error('[getGenerateCodePromptForPython] 找不到generateCode_python.md文件:', promptPath);
+        // 回退到通用实现
+        return getGenerateCodePromptGeneric(fileContent, lastGranularity, 'python', currentModulePath);
+    }
+    
+    const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
+
+    return {
+        system: systemPrompt,
+        user: userPrompt
+    };
+}
+
+/**
+ * 通用实现：代码生成提示词（回退方案）
+ */
+async function getGenerateCodePromptGeneric(fileContent: string, lastGranularity: string, language: string, currentModulePath?: string): Promise<{ system: string; user: string }> {
+    // 获取依赖模块代码
+    let dependenciesCode = '';
+    if (currentModulePath) {
+        dependenciesCode = await getDependencyModulesCode(currentModulePath, 'actual');
+    }
+
+    // 获取实际数据结构文件内容
+    let actualDataStructureCode = '';
+    if (currentModulePath) {
+        const aiPath = getAiPath();
+        const relativePath = path.relative(aiPath, currentModulePath);
+        const pathParts = relativePath.split(path.sep);
+        
+        if (pathParts.length > 0) {
+            // 实际数据结构文件存放在 .codes 目录下，而不是 .ai 目录
+            const projectName = pathParts[0];
+            const codeProjectRoot = path.join(aiPath, '.codes', projectName);
+            const { getActualDataStructureContent } = await import('../tools/actual-datastructure-generator.js');
+            actualDataStructureCode = getActualDataStructureContent(codeProjectRoot, language);
+            
+            if (actualDataStructureCode) {
+                console.log('[getGenerateCodePromptGeneric] 成功读取实际数据结构文件');
+            } else {
+                console.log('[getGenerateCodePromptGeneric] 未找到实际数据结构文件');
             }
         }
     }
@@ -617,9 +710,6 @@ export async function getGenerateCodePrompt(fileContent: string, lastGranularity
 - 如果用户提供了依赖模块的代码实现，这些模块**已经存在**
 - **绝对不要重新实现**这些数据结构或依赖模块的代码
 - 必须在代码开头使用 import 语句导入这些数据结构和依赖模块
-- 例如：
-  - 数据结构：如果 data_structures.py 中定义了 User 类，应该写 "from data_structures import User"
-  - 依赖模块：如果依赖模块是 cal.Core，应该写 "from Core import Core" 然后调用 "Core.add()"
 
 重要：请直接返回生成的完整、可运行的 ${language} 代码，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`${language} 等），不要添加任何额外的格式化标记，只返回纯代码。`,
         user: userPrompt
@@ -713,6 +803,52 @@ export async function getLeafModules(leafModulesPath:string, requirementsPath:st
  * @returns 包含 system 和 user 提示词的对象
  */
 export async function getActualDataStructurePrompt(
+    commonDSJsonContent: string,
+    language: string,
+    context: vscode.ExtensionContext
+): Promise<{ system: string; user: string }> {
+    // 根据语言路由到对应的实现函数
+    switch (language.toLowerCase()) {
+        case 'python':
+            return getActualDataStructurePromptForPython(commonDSJsonContent, context);
+        
+        // 其他语言可以在这里扩展
+        // case 'java':
+        //     return getActualDataStructurePromptForJava(commonDSJsonContent, context);
+        // case 'cpp':
+        // case 'c++':
+        //     return getActualDataStructurePromptForCpp(commonDSJsonContent, context);
+        
+        default:
+            // 回退到通用实现（使用通用prompt）
+            console.warn(`[getActualDataStructurePrompt] 语言 ${language} 暂未实现专用prompt，使用通用prompt`);
+            return getActualDataStructurePromptGeneric(commonDSJsonContent, language, context);
+    }
+}
+
+/**
+ * Python语言专用：生成实际数据结构代码的提示词
+ */
+async function getActualDataStructurePromptForPython(
+    commonDSJsonContent: string,
+    context: vscode.ExtensionContext
+): Promise<{ system: string; user: string }> {
+    const systemPromptPath = context.asAbsolutePath('resources/prompts/commonDataStructure_python.md');
+    const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
+    const systemPrompt = new TextDecoder().decode(systemPromptBytes);
+    
+    const userPrompt = `# Input 1: Source JSON\n\n${commonDSJsonContent}\n\n# Input 2: Target Language\n\nPython\n\n请将上述 JSON 定义的所有数据结构转换为 Python 语言的纯数据代码。请直接返回代码，不要使用 markdown 代码块标记（如 \`\`\`），只返回纯代码内容。`;
+    
+    return {
+        system: systemPrompt,
+        user: userPrompt
+    };
+}
+
+/**
+ * 通用实现：生成实际数据结构代码的提示词（回退方案）
+ */
+async function getActualDataStructurePromptGeneric(
     commonDSJsonContent: string,
     language: string,
     context: vscode.ExtensionContext
