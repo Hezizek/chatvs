@@ -193,27 +193,47 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
         // 读取所有依赖模块的代码
         let dependenciesCode = '';
         for (const depModuleName of currentModule.dependencies) {
-            const depModulePath = path.join(aiPath, ...depModuleName.split('.'));
-            const depNodeJsonPath = path.join(depModulePath, 'node.json');
-
-            if (fs.existsSync(depNodeJsonPath)) {
-                const nodeData = JSON.parse(fs.readFileSync(depNodeJsonPath, 'utf-8'));
+            if (codeType === 'actual') {
+                // 实际代码现在存放在 .codes 目录下
+                const projectName = relativePath.split(path.sep)[0];
+                const codeProjectRoot = path.join(aiPath, '.codes', projectName);
                 
-                let targetNode = null;
+                // 依赖模块的相对路径（去掉项目名前缀）
+                const depModulePathParts = depModuleName.split('.');
+                if (depModulePathParts[0] === projectName) {
+                    depModulePathParts.shift(); // 去掉项目名
+                }
                 
-                if (codeType === 'actual') {
-                    // 查找最新的实际代码：从后往前找第一个 generated_ 开头的文件
-                    for (let i = nodeData.length - 1; i >= 0; i--) {
-                        const node = nodeData[i];
-                        if (node.filePath) {
-                            const fileName = path.basename(node.filePath);
-                            if (fileName.startsWith('generated_')) {
-                                targetNode = node;
-                                break;
-                            }
-                        }
+                const depCodePath = path.join(codeProjectRoot, ...depModulePathParts);
+                
+                // 尝试匹配各种语言的文件扩展名
+                const extensions = ['.py', '.java', '.c', '.cpp', '.js', '.ts'];
+                let foundFile = false;
+                
+                for (const ext of extensions) {
+                    const depFilePath = depCodePath + ext;
+                    if (fs.existsSync(depFilePath)) {
+                        const depCode = fs.readFileSync(depFilePath, 'utf-8');
+                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
+                        console.log(`[getDependencyModulesCode] 成功读取依赖模块的实际代码:`, depModuleName, '文件:', path.basename(depFilePath));
+                        foundFile = true;
+                        break;
                     }
-                } else {
+                }
+                
+                if (!foundFile) {
+                    console.log(`[getDependencyModulesCode] 未找到依赖模块的实际代码文件:`, depModuleName, '搜索路径:', depCodePath);
+                }
+            } else {
+                // 伪代码仍然从 .ai 目录的 node.json 查找
+                const depModulePath = path.join(aiPath, ...depModuleName.split('.'));
+                const depNodeJsonPath = path.join(depModulePath, 'node.json');
+
+                if (fs.existsSync(depNodeJsonPath)) {
+                    const nodeData = JSON.parse(fs.readFileSync(depNodeJsonPath, 'utf-8'));
+                    
+                    let targetNode = null;
+                    
                     // 查找最后一版伪代码：从后往前找第一个不是 generated_ 开头的文件
                     for (let i = nodeData.length - 1; i >= 0; i--) {
                         const node = nodeData[i];
@@ -225,17 +245,17 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
                             }
                         }
                     }
-                }
-                
-                if (targetNode && targetNode.filePath && fs.existsSync(targetNode.filePath)) {
-                    const depCode = fs.readFileSync(targetNode.filePath, 'utf-8');
-                    dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
-                    console.log(`[getDependencyModulesCode] 成功读取依赖模块的${codeType === 'actual' ? '实际代码' : '伪代码'}:`, depModuleName, '文件:', path.basename(targetNode.filePath));
+                    
+                    if (targetNode && targetNode.filePath && fs.existsSync(targetNode.filePath)) {
+                        const depCode = fs.readFileSync(targetNode.filePath, 'utf-8');
+                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
+                        console.log(`[getDependencyModulesCode] 成功读取依赖模块的伪代码:`, depModuleName, '文件:', path.basename(targetNode.filePath));
+                    } else {
+                        console.log(`[getDependencyModulesCode] 未找到依赖模块的伪代码节点:`, depModuleName);
+                    }
                 } else {
-                    console.log(`[getDependencyModulesCode] 未找到依赖模块的${codeType === 'actual' ? '实际代码' : '伪代码'}节点:`, depModuleName);
+                    console.log('[getDependencyModulesCode] 未找到依赖模块的node.json:', depNodeJsonPath);
                 }
-            } else {
-                console.log('[getDependencyModulesCode] 未找到依赖模块的node.json:', depNodeJsonPath);
             }
         }
 
