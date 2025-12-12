@@ -499,7 +499,7 @@ export function openGranularityWebview(rootPath: string) {
                                     const diagnostic = new vscode.Diagnostic(
                                         textLine.range, 
                                         '局部精化变更 (待确认)',
-                                        vscode.DiagnosticSeverity.Information
+                                        vscode.DiagnosticSeverity.Warning
                                     );
                                     diagnostic.source = 'CodeSketcher';
                                     diagnostics.push(diagnostic);
