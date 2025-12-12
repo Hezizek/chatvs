@@ -8,7 +8,8 @@ export function getlocalNodeTree(): DesignmentTreeNode[] {
     const dirs = fs.readdirSync(aiPath, { withFileTypes: true })
     const projectNodes: DesignmentTreeNode[] = []
 
-    dirs.filter(dir => !dir.name.startsWith('_') && dir.isDirectory()).forEach(item => {
+    // 过滤掉以 _ 或 . 开头的目录（如 .codes, .vscode 等）
+    dirs.filter(dir => !dir.name.startsWith('_') && !dir.name.startsWith('.') && dir.isDirectory()).forEach(item => {
         const fullPath = path.join(aiPath, item.name)
         getProjectTreeStructure(fullPath).then(projectNode => {
             projectNodes.push(projectNode)

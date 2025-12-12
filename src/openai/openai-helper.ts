@@ -193,27 +193,47 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
         // 读取所有依赖模块的代码
         let dependenciesCode = '';
         for (const depModuleName of currentModule.dependencies) {
-            const depModulePath = path.join(aiPath, ...depModuleName.split('.'));
-            const depNodeJsonPath = path.join(depModulePath, 'node.json');
-
-            if (fs.existsSync(depNodeJsonPath)) {
-                const nodeData = JSON.parse(fs.readFileSync(depNodeJsonPath, 'utf-8'));
+            if (codeType === 'actual') {
+                // 实际代码现在存放在 .codes 目录下
+                const projectName = relativePath.split(path.sep)[0];
+                const codeProjectRoot = path.join(aiPath, '.codes', projectName);
                 
-                let targetNode = null;
+                // 依赖模块的相对路径（去掉项目名前缀）
+                const depModulePathParts = depModuleName.split('.');
+                if (depModulePathParts[0] === projectName) {
+                    depModulePathParts.shift(); // 去掉项目名
+                }
                 
-                if (codeType === 'actual') {
-                    // 查找最新的实际代码：从后往前找第一个 generated_ 开头的文件
-                    for (let i = nodeData.length - 1; i >= 0; i--) {
-                        const node = nodeData[i];
-                        if (node.filePath) {
-                            const fileName = path.basename(node.filePath);
-                            if (fileName.startsWith('generated_')) {
-                                targetNode = node;
-                                break;
-                            }
-                        }
+                const depCodePath = path.join(codeProjectRoot, ...depModulePathParts);
+                
+                // 尝试匹配各种语言的文件扩展名
+                const extensions = ['.py', '.java', '.c', '.cpp', '.js', '.ts'];
+                let foundFile = false;
+                
+                for (const ext of extensions) {
+                    const depFilePath = depCodePath + ext;
+                    if (fs.existsSync(depFilePath)) {
+                        const depCode = fs.readFileSync(depFilePath, 'utf-8');
+                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
+                        console.log(`[getDependencyModulesCode] 成功读取依赖模块的实际代码:`, depModuleName, '文件:', path.basename(depFilePath));
+                        foundFile = true;
+                        break;
                     }
-                } else {
+                }
+                
+                if (!foundFile) {
+                    console.log(`[getDependencyModulesCode] 未找到依赖模块的实际代码文件:`, depModuleName, '搜索路径:', depCodePath);
+                }
+            } else {
+                // 伪代码仍然从 .ai 目录的 node.json 查找
+                const depModulePath = path.join(aiPath, ...depModuleName.split('.'));
+                const depNodeJsonPath = path.join(depModulePath, 'node.json');
+
+                if (fs.existsSync(depNodeJsonPath)) {
+                    const nodeData = JSON.parse(fs.readFileSync(depNodeJsonPath, 'utf-8'));
+                    
+                    let targetNode = null;
+                    
                     // 查找最后一版伪代码：从后往前找第一个不是 generated_ 开头的文件
                     for (let i = nodeData.length - 1; i >= 0; i--) {
                         const node = nodeData[i];
@@ -225,17 +245,17 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
                             }
                         }
                     }
-                }
-                
-                if (targetNode && targetNode.filePath && fs.existsSync(targetNode.filePath)) {
-                    const depCode = fs.readFileSync(targetNode.filePath, 'utf-8');
-                    dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
-                    console.log(`[getDependencyModulesCode] 成功读取依赖模块的${codeType === 'actual' ? '实际代码' : '伪代码'}:`, depModuleName, '文件:', path.basename(targetNode.filePath));
+                    
+                    if (targetNode && targetNode.filePath && fs.existsSync(targetNode.filePath)) {
+                        const depCode = fs.readFileSync(targetNode.filePath, 'utf-8');
+                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
+                        console.log(`[getDependencyModulesCode] 成功读取依赖模块的伪代码:`, depModuleName, '文件:', path.basename(targetNode.filePath));
+                    } else {
+                        console.log(`[getDependencyModulesCode] 未找到依赖模块的伪代码节点:`, depModuleName);
+                    }
                 } else {
-                    console.log(`[getDependencyModulesCode] 未找到依赖模块的${codeType === 'actual' ? '实际代码' : '伪代码'}节点:`, depModuleName);
+                    console.log('[getDependencyModulesCode] 未找到依赖模块的node.json:', depNodeJsonPath);
                 }
-            } else {
-                console.log('[getDependencyModulesCode] 未找到依赖模块的node.json:', depNodeJsonPath);
             }
         }
 
@@ -280,7 +300,7 @@ export async function getJson2PsePrompt(fileContent: string, currentModulePath?:
         extensionPath = parent;
     }
     
-    const json2psePromptPath = path.join(extensionPath, 'resources', 'prompts', 'json2pse_v3.md');
+    const json2psePromptPath = path.join(extensionPath, 'resources', 'prompts', 'json2pse_v5.md');
     
     let userPrompt = `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n`;
 
@@ -295,7 +315,7 @@ export async function getJson2PsePrompt(fileContent: string, currentModulePath?:
     userPrompt += `请直接返回伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
 
     if (!fs.existsSync(json2psePromptPath)) {
-        console.error('找不到json2pse_v3.md文件:', json2psePromptPath);
+        console.error('找不到json2pse_v5.md文件:', json2psePromptPath);
         // 回退到简单的系统提示
         return {
             system: `你是一个资深的软件架构师和算法工程师。你的任务是将JSON格式的模块设计文档转换为高质量、结构清晰的伪代码。
@@ -365,23 +385,55 @@ export async function getGlobalRefinePromptDetailed(fileContent: string, current
         dependenciesCode = await getDependencyModulesCode(currentModulePath, 'pseudocode');
     }
 
-    // 针对现有伪代码的全局优化
-    const userPrompt = dependenciesCode
-        ? `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n**依赖模块的伪代码实现（这些模块已存在，不需要重新实现）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，在精化时只需调用它们，不要修改或重新实现这些依赖模块\n- 请仔细检查当前伪代码中调用依赖模块的地方，确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n- 如果发现调用不一致的地方，请修正\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
-        : `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+    // 获取通用数据结构内容（JSON 格式）
+    let commonDSContent = '';
+    if (commonDSPath && fs.existsSync(commonDSPath)) {
+        try {
+            commonDSContent = fs.readFileSync(commonDSPath, 'utf-8');
+            console.log('[getGlobalRefinePromptDetailed] 成功读取通用数据结构 JSON 文件');
+        } catch (error) {
+            console.error('[getGlobalRefinePromptDetailed] 读取通用数据结构失败:', error);
+        }
+    }
+
+    // 获取扩展根路径
+    let extensionPath = __dirname;
+    while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
+        const parent = path.dirname(extensionPath);
+        if (parent === extensionPath) {
+            break;
+        }
+        extensionPath = parent;
+    }
+    
+    const promptPath = path.join(extensionPath, 'resources', 'prompts', '细粒度精化Prompt.md');
+    
+    // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
+    let userPrompt = `# Input 1: Target Module Pseudocode\n\n${fileContent}\n\n`;
+    
+    if (dependenciesCode) {
+        userPrompt += `# Input 2: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
+    }
+    
+    if (commonDSContent) {
+        userPrompt += `# Input 3: Common Data Structures\n\n${commonDSContent}\n\n`;
+    }
+
+    userPrompt += `请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+
+    if (!fs.existsSync(promptPath)) {
+        console.error('[getGlobalRefinePromptDetailed] 找不到细粒度精化Prompt.md文件:', promptPath);
+        // 回退到简单的系统提示
+        return {
+            system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行全局精化，帮助改进其清晰性、逻辑性和完整性。\n\n请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记，只返回纯文本的伪代码内容。`,
+            user: userPrompt
+        };
+    }
+    
+    const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
-        system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行全局精化，帮助改进其清晰性、逻辑性和完整性。
-
-请对伪代码的以下方面进行优化：
-1. 逻辑流程清晰性 - 确保流程步骤清晰、易懂
-2. 算法设计 - 优化算法逻辑和流程
-3. 结构完整性 - 检查是否有遗漏的步骤或分支
-4. 边界条件处理 - 确保处理了所有边界情况
-5. 变量和函数命名 - 确保名称清晰能够表达意图
-6. 依赖一致性 - 如果提供了依赖模块代码，确保调用依赖模块的函数名、参数和返回值与依赖模块的实际定义完全一致
-
-重要：请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`python 等），不要添加任何额外的格式化标记，只返回纯文本的伪代码内容。`,
+        system: systemPrompt,
         user: userPrompt
     };
 }
@@ -399,23 +451,55 @@ export async function getGlobalRefinePromptCoarse(fileContent: string, currentMo
         dependenciesCode = await getDependencyModulesCode(currentModulePath, 'pseudocode');
     }
 
-    // 针对现有伪代码的全局优化
-    const userPrompt = dependenciesCode
-        ? `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n**依赖模块的伪代码实现（这些模块已存在，不需要重新实现）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，在精化时只需调用它们，不要修改或重新实现这些依赖模块\n- 请仔细检查当前伪代码中调用依赖模块的地方，确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n- 如果发现调用不一致的地方，请修正\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
-        : `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+    // 获取通用数据结构内容（JSON 格式）
+    let commonDSContent = '';
+    if (commonDSPath && fs.existsSync(commonDSPath)) {
+        try {
+            commonDSContent = fs.readFileSync(commonDSPath, 'utf-8');
+            console.log('[getGlobalRefinePromptCoarse] 成功读取通用数据结构 JSON 文件');
+        } catch (error) {
+            console.error('[getGlobalRefinePromptCoarse] 读取通用数据结构失败:', error);
+        }
+    }
+
+    // 获取扩展根路径
+    let extensionPath = __dirname;
+    while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
+        const parent = path.dirname(extensionPath);
+        if (parent === extensionPath) {
+            break;
+        }
+        extensionPath = parent;
+    }
+    
+    const promptPath = path.join(extensionPath, 'resources', 'prompts', '粗粒度精化prompt.md');
+    
+    // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
+    let userPrompt = `# Input 1: Target Module Pseudocode\n\n${fileContent}\n\n`;
+    
+    if (dependenciesCode) {
+        userPrompt += `# Input 2: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
+    }
+    
+    if (commonDSContent) {
+        userPrompt += `# Input 3: Common Data Structures\n\n${commonDSContent}\n\n`;
+    }
+
+    userPrompt += `请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+
+    if (!fs.existsSync(promptPath)) {
+        console.error('[getGlobalRefinePromptCoarse] 找不到粗粒度精化prompt.md文件:', promptPath);
+        // 回退到简单的系统提示
+        return {
+            system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行较粗粒度的全局精化。\n\n请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记，只返回纯文本的伪代码内容。`,
+            user: userPrompt
+        };
+    }
+    
+    const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
-        system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行全局精化，帮助改进其清晰性、逻辑性和完整性。
-
-请对伪代码的以下方面进行优化：
-1. 逻辑流程清晰性 - 确保流程步骤清晰、易懂
-2. 算法设计 - 优化算法逻辑和流程
-3. 结构完整性 - 检查是否有遗漏的步骤或分支
-4. 边界条件处理 - 确保处理了所有边界情况
-5. 变量和函数命名 - 确保名称清晰能够表达意图
-6. 依赖一致性 - 如果提供了依赖模块代码，确保调用依赖模块的函数名、参数和返回值与依赖模块的实际定义完全一致
-
-重要：请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`python 等），不要添加任何额外的格式化标记，只返回纯文本的伪代码内容。`,
+        system: systemPrompt,
         user: userPrompt
     };
 }
@@ -434,7 +518,7 @@ export async function getLocalRefinePrompt(
     // 获取依赖模块代码
     let dependenciesCode = '';
     if (currentModulePath) {
-        dependenciesCode = await getDependencyModulesCode(currentModulePath,'pseudocode');
+        dependenciesCode = await getDependencyModulesCode(currentModulePath, 'pseudocode');
     }
 
     // 获取通用数据结构内容（JSON 格式）
@@ -444,34 +528,50 @@ export async function getLocalRefinePrompt(
             commonDSContent = fs.readFileSync(commonDSPath, 'utf-8');
             console.log('[getLocalRefinePrompt] 成功读取通用数据结构 JSON 文件');
         } catch (error) {
-            console.error('读取通用数据结构失败:', error);
+            console.error('[getLocalRefinePrompt] 读取通用数据结构失败:', error);
         }
     }
 
-    let userPrompt = `文件完整内容如下：\n\n${fileContent}\n\n用户选中的待精化部分（第 ${startLine} - ${endLine} 行）：\n\n${selectedCode}\n\n`;
-    
-    if (commonDSContent) {
-        userPrompt += `通用数据结构定义（JSON 格式）：\n${commonDSContent}\n\n`;
+    // 获取扩展根路径
+    let extensionPath = __dirname;
+    while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
+        const parent = path.dirname(extensionPath);
+        if (parent === extensionPath) {
+            break;
+        }
+        extensionPath = parent;
     }
+    
+    const promptPath = path.join(extensionPath, 'resources', 'prompts', '局部精化prompt.md');
+
+    // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
+    let userPrompt = `# Input 1: Target Module Pseudocode (Full)\n\n${fileContent}\n\n`;
+    
+    userPrompt += `# Input 2: Selected Code Fragment\n\n第 ${startLine} - ${endLine} 行：\n\n${selectedCode}\n\n`;
     
     if (dependenciesCode) {
-        userPrompt += `**依赖模块的伪代码实现（这些模块已存在）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，不需要修改\n- 如果选中部分涉及调用依赖模块，请确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n\n`;
+        userPrompt += `# Input 3: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
     }
     
-    userPrompt += `请对选中部分进行精化，并返回修改后的**完整**伪代码内容。`;
+    if (commonDSContent) {
+        userPrompt += `# Input 4: Common Data Structures\n\n${commonDSContent}\n\n`;
+    }
+    
+    userPrompt += `请对选中部分进行精化，并返回修改后的**完整**伪代码内容。直接返回完整伪代码，不要使用markdown代码块标记（如 \`\`\`），只返回纯文本内容。`;
+
+    if (!fs.existsSync(promptPath)) {
+        console.error('[getLocalRefinePrompt] 找不到局部精化prompt.md文件:', promptPath);
+        // 回退到简单的系统提示
+        return {
+            system: `你是一个专业的伪代码审查专家。你的任务是对伪代码的特定部分进行局部精化，但必须返回**修改后的完整文件内容**。\n\n请对选中部分进行优化，确保全局一致性，并输出修改后的完整伪代码。\n\n重要：请直接返回修改后的完整伪代码，不要使用markdown代码块标记（如 \`\`\`），只返回纯文本内容。`,
+            user: userPrompt
+        };
+    }
+    
+    const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
-        system: `你是一个专业的伪代码审查专家。你的任务是对伪代码的特定部分进行局部精化，但必须返回**修改后的完整文件内容**。
-
-请对选中的伪代码片段进行以下方面的优化：
-1. **重点优化**：仅针对用户选中的部分（第 ${startLine} 到 ${endLine} 行）进行逻辑、清晰度和完整性的优化。
-2. **确保全局一致性**：如果局部修改影响了整体逻辑（如变量名变更、状态依赖、类型变更），请同步修改文件中的相关部分，确保整体逻辑自洽。
-3. **检查全局一致性**：检查代码是否本身存在一致性问题（如变量名冲突、状态依赖错误、类型不匹配），并进行相应修正。
-4. **依赖一致性**：确保调用依赖模块的函数签名正确。
-5. **保持原样**：除非为了满足上述第2、3、4点，否则**绝对不要**修改未选中部分的代码（包括缩进、注释等）。
-6. **完整输出**：请输出修改后的**完整伪代码内容**，不要只返回片段。
-
-重要：请直接返回修改后的完整伪代码，不要使用markdown代码块标记（如 \`\`\`），只返回纯文本内容。`,
+        system: systemPrompt,
         user: userPrompt
     };
 } 
@@ -480,6 +580,29 @@ export async function getLocalRefinePrompt(
  * 代码生成提示词 - 从伪代码生成实际代码
  */
 export async function getGenerateCodePrompt(fileContent: string, lastGranularity: string, language: string = 'python', currentModulePath?: string): Promise<{ system: string; user: string }> {
+    // 根据语言路由到对应的实现函数
+    switch (language.toLowerCase()) {
+        case 'python':
+            return getGenerateCodePromptForPython(fileContent, lastGranularity, currentModulePath);
+        
+        // 其他语言可以在这里扩展
+        // case 'java':
+        //     return getGenerateCodePromptForJava(fileContent, lastGranularity, currentModulePath);
+        // case 'cpp':
+        // case 'c++':
+        //     return getGenerateCodePromptForCpp(fileContent, lastGranularity, currentModulePath);
+        
+        default:
+            // 回退到通用实现（使用硬编码prompt）
+            console.warn(`[getGenerateCodePrompt] 语言 ${language} 暂未实现专用prompt，使用通用prompt`);
+            return getGenerateCodePromptGeneric(fileContent, lastGranularity, language, currentModulePath);
+    }
+}
+
+/**
+ * Python语言专用：代码生成提示词
+ */
+async function getGenerateCodePromptForPython(fileContent: string, lastGranularity: string, currentModulePath?: string): Promise<{ system: string; user: string }> {
     // 获取依赖模块代码 - 代码生成时需要实际代码
     let dependenciesCode = '';
     if (currentModulePath) {
@@ -489,59 +612,134 @@ export async function getGenerateCodePrompt(fileContent: string, lastGranularity
     // 获取实际数据结构文件内容
     let actualDataStructureCode = '';
     if (currentModulePath) {
-        // 从当前模块路径找到项目根路径
         const aiPath = getAiPath();
         const relativePath = path.relative(aiPath, currentModulePath);
         const pathParts = relativePath.split(path.sep);
         
         if (pathParts.length > 0) {
-            const projectRootPath = path.join(aiPath, pathParts[0]);
-            
-            // 尝试读取实际数据结构文件
+            // 实际数据结构文件存放在 .codes 目录下，而不是 .ai 目录
+            const projectName = pathParts[0];
+            const codeProjectRoot = path.join(aiPath, '.codes', projectName);
             const { getActualDataStructureContent } = await import('../tools/actual-datastructure-generator.js');
-            actualDataStructureCode = getActualDataStructureContent(projectRootPath, language);
+            actualDataStructureCode = getActualDataStructureContent(codeProjectRoot, 'python');
             
             if (actualDataStructureCode) {
-                console.log('[getGenerateCodePrompt] 成功读取实际数据结构文件');
+                console.log('[getGenerateCodePromptForPython] 成功读取实际数据结构文件');
             } else {
-                console.log('[getGenerateCodePrompt] 未找到实际数据结构文件');
+                console.log('[getGenerateCodePromptForPython] 未找到实际数据结构文件');
             }
         }
     }
 
-    // 构建用户提示词
-    let userPrompt = `以下是伪代码（${lastGranularity || '初始粒度'}）：\n\n${fileContent}\n\n`;
+    // 获取扩展根路径
+    let extensionPath = __dirname;
+    while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
+        const parent = path.dirname(extensionPath);
+        if (parent === extensionPath) {
+            break;
+        }
+        extensionPath = parent;
+    }
+    
+    const promptPath = path.join(extensionPath, 'resources', 'prompts', 'generateCode_python.md');
+    
+    // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
+    let userPrompt = `# Input 1: Target Module Pseudocode\n\n${fileContent}\n\n`;
     
     if (actualDataStructureCode) {
-        userPrompt += `**项目的实际数据结构定义（已生成的代码，位于项目根目录的 data_structures.${language === 'python' ? 'py' : language} 文件中）**：\n\n${actualDataStructureCode}\n\n**关于数据结构的重要说明（请务必遵守）**：\n1. 上述数据结构代码**已经存在**于项目根目录的 data_structures 文件中\n2. **绝对禁止**在生成的代码中重新定义或复制这些数据结构的任何部分\n3. 如果需要使用这些数据结构，**必须且只能**通过 import 语句导入\n4. 例如 Python 中应写：from data_structures import ExpressionInput, ParsedExpression, CalculationResult\n5. 导入后直接使用，不要有任何关于数据结构的定义代码\n\n`;
+        userPrompt += `# Input 2: Project Data Structures\n\n${actualDataStructureCode}\n\n`;
     }
     
     if (dependenciesCode) {
-        userPrompt += `**依赖模块代码（这些模块已经实现，请不要重新实现！！！！！）**：${dependenciesCode}\n\n**重要提醒**：\n1. 上面列出的依赖模块已经存在并实现完毕，你只需要 import 它们并调用即可\n2. 请在生成的代码开头添加正确的 import 语句来导入这些依赖模块\n3. **绝对不要**在你生成的代码中重新定义或实现这些依赖模块的类和函数\n4. 调用依赖模块时，请使用它们在伪代码中显示的实际函数签名\n\n`;
+        userPrompt += `# Input 3: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
     }
     
-    userPrompt += `请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。\n\n请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`;
+    userPrompt += `请根据上述伪代码的整体逻辑生成完整、可运行的 Python 代码。请直接返回 Python 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`;
+
+    if (!fs.existsSync(promptPath)) {
+        console.error('[getGenerateCodePromptForPython] 找不到generateCode_python.md文件:', promptPath);
+        // 回退到通用实现
+        return getGenerateCodePromptGeneric(fileContent, lastGranularity, 'python', currentModulePath);
+    }
+    
+    const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
-        system: `你是一个专业的 ${language} 代码生成专家。你的任务是根据提供的伪代码生成可运行的 ${language} 代码。
+        system: systemPrompt,
+        user: userPrompt
+    };
+}
 
-代码生成要求：
-1. 根据伪代码的完整逻辑生成可运行的 ${language} 代码
-2. 使用适当的 ${language} 数据结构和库
-3. 添加必要的错误处理和边界检查
-4. 遵循该语言的最佳实践和代码规范
-5. 添加清晰的注释对应伪代码步骤
+/**
+ * 通用实现：代码生成提示词（回退方案）
+ */
+async function getGenerateCodePromptGeneric(fileContent: string, lastGranularity: string, language: string, currentModulePath?: string): Promise<{ system: string; user: string }> {
+    // 获取依赖模块代码
+    let dependenciesCode = '';
+    if (currentModulePath) {
+        dependenciesCode = await getDependencyModulesCode(currentModulePath, 'actual');
+    }
 
-**关于数据结构和依赖模块的处理（非常重要）：**
-- 如果用户提供了项目的实际数据结构定义，这些数据结构**已经存在**于项目根目录
-- 如果用户提供了依赖模块的代码实现，这些模块**已经存在**
-- **绝对不要重新实现**这些数据结构或依赖模块的代码
-- 必须在代码开头使用 import 语句导入这些数据结构和依赖模块
-- 例如：
-  - 数据结构：如果 data_structures.py 中定义了 User 类，应该写 "from data_structures import User"
-  - 依赖模块：如果依赖模块是 cal.Core，应该写 "from Core import Core" 然后调用 "Core.add()"
+    // 获取实际数据结构文件内容
+    let actualDataStructureCode = '';
+    if (currentModulePath) {
+        const aiPath = getAiPath();
+        const relativePath = path.relative(aiPath, currentModulePath);
+        const pathParts = relativePath.split(path.sep);
+        
+        if (pathParts.length > 0) {
+            // 实际数据结构文件存放在 .codes 目录下，而不是 .ai 目录
+            const projectName = pathParts[0];
+            const codeProjectRoot = path.join(aiPath, '.codes', projectName);
+            const { getActualDataStructureContent } = await import('../tools/actual-datastructure-generator.js');
+            actualDataStructureCode = getActualDataStructureContent(codeProjectRoot, language);
+            
+            if (actualDataStructureCode) {
+                console.log('[getGenerateCodePromptGeneric] 成功读取实际数据结构文件');
+            } else {
+                console.log('[getGenerateCodePromptGeneric] 未找到实际数据结构文件');
+            }
+        }
+    }
 
-重要：请直接返回生成的完整、可运行的 ${language} 代码，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`${language} 等），不要添加任何额外的格式化标记，只返回纯代码。`,
+    // 获取扩展根路径
+    let extensionPath = __dirname;
+    while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
+        const parent = path.dirname(extensionPath);
+        if (parent === extensionPath) {
+            break;
+        }
+        extensionPath = parent;
+    }
+    
+    const promptPath = path.join(extensionPath, 'resources', 'prompts', 'generateCode.md');
+
+    // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
+    let userPrompt = `# Input 1: Target Module Pseudocode\n\n${fileContent}\n\n`;
+    
+    if (actualDataStructureCode) {
+        userPrompt += `# Input 2: Project Data Structures\n\n${actualDataStructureCode}\n\n`;
+    }
+    
+    if (dependenciesCode) {
+        userPrompt += `# Input 3: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
+    }
+    
+    userPrompt += `请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`;
+
+    if (!fs.existsSync(promptPath)) {
+        console.error('[getGenerateCodePromptGeneric] 找不到generateCode.md文件:', promptPath);
+        // 回退到简单的系统提示
+        return {
+            system: `你是 ${language} 代码生成专家。根据伪代码生成可运行的代码，导入已存在的数据结构和依赖模块。直接返回代码，不使用 markdown 标记。`,
+            user: userPrompt
+        };
+    }
+    
+    const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
+
+    return {
+        system: systemPrompt,
         user: userPrompt
     };
 }
@@ -637,11 +835,57 @@ export async function getActualDataStructurePrompt(
     language: string,
     context: vscode.ExtensionContext
 ): Promise<{ system: string; user: string }> {
+    // 根据语言路由到对应的实现函数
+    switch (language.toLowerCase()) {
+        case 'python':
+            return getActualDataStructurePromptForPython(commonDSJsonContent, context);
+        
+        // 其他语言可以在这里扩展
+        // case 'java':
+        //     return getActualDataStructurePromptForJava(commonDSJsonContent, context);
+        // case 'cpp':
+        // case 'c++':
+        //     return getActualDataStructurePromptForCpp(commonDSJsonContent, context);
+        
+        default:
+            // 回退到通用实现（使用通用prompt）
+            console.warn(`[getActualDataStructurePrompt] 语言 ${language} 暂未实现专用prompt，使用通用prompt`);
+            return getActualDataStructurePromptGeneric(commonDSJsonContent, language, context);
+    }
+}
+
+/**
+ * Python语言专用：生成实际数据结构代码的提示词
+ */
+async function getActualDataStructurePromptForPython(
+    commonDSJsonContent: string,
+    context: vscode.ExtensionContext
+): Promise<{ system: string; user: string }> {
+    const systemPromptPath = context.asAbsolutePath('resources/prompts/commonDataStructure_python.md');
+    const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
+    const systemPrompt = new TextDecoder().decode(systemPromptBytes);
+    
+    const userPrompt = `# Input 1: Source JSON\n\n${commonDSJsonContent}\n\n# Input 2: Target Language\n\nPython\n\n请将上述 JSON 定义的所有数据结构转换为 Python 语言的纯数据代码。请直接返回代码，不要使用 markdown 代码块标记（如 \`\`\`），只返回纯代码内容。`;
+    
+    return {
+        system: systemPrompt,
+        user: userPrompt
+    };
+}
+
+/**
+ * 通用实现：生成实际数据结构代码的提示词（回退方案）
+ */
+async function getActualDataStructurePromptGeneric(
+    commonDSJsonContent: string,
+    language: string,
+    context: vscode.ExtensionContext
+): Promise<{ system: string; user: string }> {
     const systemPromptPath = context.asAbsolutePath('resources/prompts/commonDataStructure.md');
     const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
     const systemPrompt = new TextDecoder().decode(systemPromptBytes);
     
-    const userPrompt = `Source JSON（通用数据结构定义）：\n${commonDSJsonContent}\n\nTarget Language: ${language}\n\n请将上述 JSON 定义的所有数据结构转换为 ${language} 语言的纯数据代码。请直接返回代码，不要使用 markdown 代码块标记（如 \`\`\`），只返回纯代码内容。`;
+    const userPrompt = `Source JSON：\n${commonDSJsonContent}\n\nTarget Language: ${language}\n\n请直接返回代码，不要使用 markdown 代码块标记。`;
     
     return {
         system: systemPrompt,
