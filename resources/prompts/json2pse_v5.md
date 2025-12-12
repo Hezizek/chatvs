@@ -12,16 +12,11 @@
 
 * **Target Module Design (JSON)**: 当前需要实现的模块设计。包含接口定义 (`interfaces`)、内部状态 (`local_variable`) 和详细逻辑描述 (`description` / `entry_point_logic`)。
 * **Upstream Dependency Implementations (Pseudocode)**: 该模块依赖的所有上游模块的**最终版伪代码**。
+
   * *用途*：用于确认函数调用的签名（函数名、参数顺序）。即便当前不实现详细逻辑，如果需要写出核心控制流调用，必须**严格查阅**此输入。
 * **Common Data Structures**: 系统通用的数据类型定义。
+
   * *用途*：当目标模块需要使用通用数据结构时，必须**严格查阅**此输入，使用已定义好的通用数据结构实际实现的数据结构名称（名称、属性名称等）。
-* **输出伪代码行数上限（包含注释）**：当用户提供上限时必须严格保证输出行数不超过该上限，否则任务判定为完全失败。优先级：信息完整性 > 输出行数上限 > 格式结构。当行数紧张时，允许压缩结构：
-  * 不写分割线。
-  * 不要空行。
-  * 不展开 skeleton。
-  * 允许将函数体压缩到最小可用结构（仅保留函数签名、docstring、必要的 TODO 行）。
-  * 在确保 description 原文完整的前提下尽量减少额外行。
-  * 输出必须严格仅包含 Markdown 代码块，且代码块外不得输出任何内容（包括解释、提示、额外文本）。
 
 # Goals
 
@@ -55,7 +50,7 @@
    * **立即插入文档注释**：`/* [JSON Description Content] */`。
    * 生成粗粒度逻辑：
      * 如果该函数只是简单调用依赖，写出调用语句。
-     * 如果该函数包含复杂逻辑（如解析、遍历、计算），请使用简练的注释 `// TODO: Implement Step X...` 代替具体代码。
+     * 如果该函数包含复杂逻辑（如解析、遍历、计算），请使用简练的自然语言注释 `// TODO: 本步实现……` 代替具体伪代码，不允许出现示例伪代码。
      * 确保包含 `RETURN` 语句（即使返回 `NULL` 或默认值）。
 3. **entry_point_logic**:
    * 若存在内容则生成 `MAIN_EXECUTION_FLOW` 代码块，否则不需要生成此部分。
@@ -73,42 +68,42 @@ MODULE TaskManager
     // ==========================================
     // Local Variable
     // ==========================================
-    VAR task_list: List<TodoItem> = []
-    VAR last_id: Integer = 0
+    VAR taskList: List<TodoItem> = []
+    VAR lastId: Integer = 0
 
     // ==========================================
     // Public Interfaces
     // ==========================================
    
-    FUNCTION add_task(content: String) -> TodoItem
+    FUNCTION addTask(content: String) -> TodoItem
         /*
         REQUIREMENTS:
         1. 校验 content 长度是否在 1-50 字符之间，否则抛出 ValidationException。
-        2. 生成全局唯一 ID (last_id + 1)。
+        2. 生成全局唯一 ID (lastId + 1)。
         3. 创建新的 TodoItem 对象，状态默认为 Pending。
-        4. 将对象追加到 local_variable 中的 memory_cache。
-        5. 调用 StorageEngine.save_item(new_task) 持久化数据。
+        4. 将对象追加到 localVariable 中的 memoryCache。
+        5. 调用 StorageEngine.saveItem(newTask) 持久化数据。
         */
   
-        // TODO: Step 1 - Validate content length
+        // TODO: 步骤1：校验长度
   
-        // TODO: Step 2 - Generate ID
+        // TODO: 步骤2：生成ID
   
-        // TODO: Step 3 - Create Object
-        VAR new_task: TodoItem = NEW TodoItem()
-        // (Set properties...)
+        // TODO: 步骤3：创建对象
+        VAR newTask: TodoItem = NEW TodoItem()
+        // (设置属性...)
 
-        // Step 4: Persist (Critical Dependency Call)
-        // Calling Upstream Dependency based on Input 2
+        // 步骤4：实现持久化
+        // 基于Input2的接口进行调用。
         TRY
-            StorageEngine.save_item(new_task) 
+            StorageEngine.saveItem(newTask) 
         CATCH StorageError
             RETURN NULL
         END TRY
 
-        // TODO: Step 5 - Append to list
+        // TODO: 步骤5：加入列表
 
-        RETURN new_task
+        RETURN newTask
     END FUNCTION
   
 END MODULE

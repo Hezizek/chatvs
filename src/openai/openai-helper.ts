@@ -280,7 +280,7 @@ export async function getJson2PsePrompt(fileContent: string, currentModulePath?:
         extensionPath = parent;
     }
     
-    const json2psePromptPath = path.join(extensionPath, 'resources', 'prompts', 'json2pse_v3.md');
+    const json2psePromptPath = path.join(extensionPath, 'resources', 'prompts', 'json2pse_v5.md');
     
     let userPrompt = `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n`;
 
@@ -295,7 +295,7 @@ export async function getJson2PsePrompt(fileContent: string, currentModulePath?:
     userPrompt += `请直接返回伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
 
     if (!fs.existsSync(json2psePromptPath)) {
-        console.error('找不到json2pse_v3.md文件:', json2psePromptPath);
+        console.error('找不到json2pse_v5.md文件:', json2psePromptPath);
         // 回退到简单的系统提示
         return {
             system: `你是一个资深的软件架构师和算法工程师。你的任务是将JSON格式的模块设计文档转换为高质量、结构清晰的伪代码。
