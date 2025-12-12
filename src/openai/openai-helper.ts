@@ -365,23 +365,55 @@ export async function getGlobalRefinePromptDetailed(fileContent: string, current
         dependenciesCode = await getDependencyModulesCode(currentModulePath, 'pseudocode');
     }
 
-    // 针对现有伪代码的全局优化
-    const userPrompt = dependenciesCode
-        ? `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n**依赖模块的伪代码实现（这些模块已存在，不需要重新实现）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，在精化时只需调用它们，不要修改或重新实现这些依赖模块\n- 请仔细检查当前伪代码中调用依赖模块的地方，确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n- 如果发现调用不一致的地方，请修正\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
-        : `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+    // 获取通用数据结构内容（JSON 格式）
+    let commonDSContent = '';
+    if (commonDSPath && fs.existsSync(commonDSPath)) {
+        try {
+            commonDSContent = fs.readFileSync(commonDSPath, 'utf-8');
+            console.log('[getGlobalRefinePromptDetailed] 成功读取通用数据结构 JSON 文件');
+        } catch (error) {
+            console.error('[getGlobalRefinePromptDetailed] 读取通用数据结构失败:', error);
+        }
+    }
+
+    // 获取扩展根路径
+    let extensionPath = __dirname;
+    while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
+        const parent = path.dirname(extensionPath);
+        if (parent === extensionPath) {
+            break;
+        }
+        extensionPath = parent;
+    }
+    
+    const promptPath = path.join(extensionPath, 'resources', 'prompts', '细粒度精化Prompt.md');
+    
+    // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
+    let userPrompt = `# Input 1: Target Module Pseudocode\n\n${fileContent}\n\n`;
+    
+    if (dependenciesCode) {
+        userPrompt += `# Input 2: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
+    }
+    
+    if (commonDSContent) {
+        userPrompt += `# Input 3: Common Data Structures\n\n${commonDSContent}\n\n`;
+    }
+
+    userPrompt += `请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+
+    if (!fs.existsSync(promptPath)) {
+        console.error('[getGlobalRefinePromptDetailed] 找不到细粒度精化Prompt.md文件:', promptPath);
+        // 回退到简单的系统提示
+        return {
+            system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行全局精化，帮助改进其清晰性、逻辑性和完整性。\n\n请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记，只返回纯文本的伪代码内容。`,
+            user: userPrompt
+        };
+    }
+    
+    const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
-        system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行全局精化，帮助改进其清晰性、逻辑性和完整性。
-
-请对伪代码的以下方面进行优化：
-1. 逻辑流程清晰性 - 确保流程步骤清晰、易懂
-2. 算法设计 - 优化算法逻辑和流程
-3. 结构完整性 - 检查是否有遗漏的步骤或分支
-4. 边界条件处理 - 确保处理了所有边界情况
-5. 变量和函数命名 - 确保名称清晰能够表达意图
-6. 依赖一致性 - 如果提供了依赖模块代码，确保调用依赖模块的函数名、参数和返回值与依赖模块的实际定义完全一致
-
-重要：请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`python 等），不要添加任何额外的格式化标记，只返回纯文本的伪代码内容。`,
+        system: systemPrompt,
         user: userPrompt
     };
 }
@@ -399,23 +431,55 @@ export async function getGlobalRefinePromptCoarse(fileContent: string, currentMo
         dependenciesCode = await getDependencyModulesCode(currentModulePath, 'pseudocode');
     }
 
-    // 针对现有伪代码的全局优化
-    const userPrompt = dependenciesCode
-        ? `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n**依赖模块的伪代码实现（这些模块已存在，不需要重新实现）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，在精化时只需调用它们，不要修改或重新实现这些依赖模块\n- 请仔细检查当前伪代码中调用依赖模块的地方，确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n- 如果发现调用不一致的地方，请修正\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`
-        : `请对以下伪代码进行全局精化：\n\n${fileContent}\n\n请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+    // 获取通用数据结构内容（JSON 格式）
+    let commonDSContent = '';
+    if (commonDSPath && fs.existsSync(commonDSPath)) {
+        try {
+            commonDSContent = fs.readFileSync(commonDSPath, 'utf-8');
+            console.log('[getGlobalRefinePromptCoarse] 成功读取通用数据结构 JSON 文件');
+        } catch (error) {
+            console.error('[getGlobalRefinePromptCoarse] 读取通用数据结构失败:', error);
+        }
+    }
+
+    // 获取扩展根路径
+    let extensionPath = __dirname;
+    while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
+        const parent = path.dirname(extensionPath);
+        if (parent === extensionPath) {
+            break;
+        }
+        extensionPath = parent;
+    }
+    
+    const promptPath = path.join(extensionPath, 'resources', 'prompts', '粗粒度精化prompt.md');
+    
+    // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
+    let userPrompt = `# Input 1: Target Module Pseudocode\n\n${fileContent}\n\n`;
+    
+    if (dependenciesCode) {
+        userPrompt += `# Input 2: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
+    }
+    
+    if (commonDSContent) {
+        userPrompt += `# Input 3: Common Data Structures\n\n${commonDSContent}\n\n`;
+    }
+
+    userPrompt += `请直接返回改进后的完整伪代码，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
+
+    if (!fs.existsSync(promptPath)) {
+        console.error('[getGlobalRefinePromptCoarse] 找不到粗粒度精化prompt.md文件:', promptPath);
+        // 回退到简单的系统提示
+        return {
+            system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行较粗粒度的全局精化。\n\n请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记，只返回纯文本的伪代码内容。`,
+            user: userPrompt
+        };
+    }
+    
+    const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
-        system: `你是一个专业的伪代码审查和优化专家。你的任务是对输入的伪代码进行全局精化，帮助改进其清晰性、逻辑性和完整性。
-
-请对伪代码的以下方面进行优化：
-1. 逻辑流程清晰性 - 确保流程步骤清晰、易懂
-2. 算法设计 - 优化算法逻辑和流程
-3. 结构完整性 - 检查是否有遗漏的步骤或分支
-4. 边界条件处理 - 确保处理了所有边界情况
-5. 变量和函数命名 - 确保名称清晰能够表达意图
-6. 依赖一致性 - 如果提供了依赖模块代码，确保调用依赖模块的函数名、参数和返回值与依赖模块的实际定义完全一致
-
-重要：请直接返回改进后的完整伪代码内容，不要使用任何markdown代码块标记（如 \`\`\` 或 \`\`\`python 等），不要添加任何额外的格式化标记，只返回纯文本的伪代码内容。`,
+        system: systemPrompt,
         user: userPrompt
     };
 }
@@ -434,7 +498,7 @@ export async function getLocalRefinePrompt(
     // 获取依赖模块代码
     let dependenciesCode = '';
     if (currentModulePath) {
-        dependenciesCode = await getDependencyModulesCode(currentModulePath,'pseudocode');
+        dependenciesCode = await getDependencyModulesCode(currentModulePath, 'pseudocode');
     }
 
     // 获取通用数据结构内容（JSON 格式）
@@ -444,34 +508,50 @@ export async function getLocalRefinePrompt(
             commonDSContent = fs.readFileSync(commonDSPath, 'utf-8');
             console.log('[getLocalRefinePrompt] 成功读取通用数据结构 JSON 文件');
         } catch (error) {
-            console.error('读取通用数据结构失败:', error);
+            console.error('[getLocalRefinePrompt] 读取通用数据结构失败:', error);
         }
     }
 
-    let userPrompt = `文件完整内容如下：\n\n${fileContent}\n\n用户选中的待精化部分（第 ${startLine} - ${endLine} 行）：\n\n${selectedCode}\n\n`;
-    
-    if (commonDSContent) {
-        userPrompt += `通用数据结构定义（JSON 格式）：\n${commonDSContent}\n\n`;
+    // 获取扩展根路径
+    let extensionPath = __dirname;
+    while (extensionPath && !fs.existsSync(path.join(extensionPath, 'package.json'))) {
+        const parent = path.dirname(extensionPath);
+        if (parent === extensionPath) {
+            break;
+        }
+        extensionPath = parent;
     }
+    
+    const promptPath = path.join(extensionPath, 'resources', 'prompts', '局部精化prompt.md');
+
+    // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
+    let userPrompt = `# Input 1: Target Module Pseudocode (Full)\n\n${fileContent}\n\n`;
+    
+    userPrompt += `# Input 2: Selected Code Fragment\n\n第 ${startLine} - ${endLine} 行：\n\n${selectedCode}\n\n`;
     
     if (dependenciesCode) {
-        userPrompt += `**依赖模块的伪代码实现（这些模块已存在）**：${dependenciesCode}\n\n**重要说明**：\n- 上面列出的依赖模块已经存在，不需要修改\n- 如果选中部分涉及调用依赖模块，请确保函数名、参数列表、返回值类型与依赖模块的实际定义完全一致\n\n`;
+        userPrompt += `# Input 3: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
     }
     
-    userPrompt += `请对选中部分进行精化，并返回修改后的**完整**伪代码内容。`;
+    if (commonDSContent) {
+        userPrompt += `# Input 4: Common Data Structures\n\n${commonDSContent}\n\n`;
+    }
+    
+    userPrompt += `请对选中部分进行精化，并返回修改后的**完整**伪代码内容。直接返回完整伪代码，不要使用markdown代码块标记（如 \`\`\`），只返回纯文本内容。`;
+
+    if (!fs.existsSync(promptPath)) {
+        console.error('[getLocalRefinePrompt] 找不到局部精化prompt.md文件:', promptPath);
+        // 回退到简单的系统提示
+        return {
+            system: `你是一个专业的伪代码审查专家。你的任务是对伪代码的特定部分进行局部精化，但必须返回**修改后的完整文件内容**。\n\n请对选中部分进行优化，确保全局一致性，并输出修改后的完整伪代码。\n\n重要：请直接返回修改后的完整伪代码，不要使用markdown代码块标记（如 \`\`\`），只返回纯文本内容。`,
+            user: userPrompt
+        };
+    }
+    
+    const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
-        system: `你是一个专业的伪代码审查专家。你的任务是对伪代码的特定部分进行局部精化，但必须返回**修改后的完整文件内容**。
-
-请对选中的伪代码片段进行以下方面的优化：
-1. **重点优化**：仅针对用户选中的部分（第 ${startLine} 到 ${endLine} 行）进行逻辑、清晰度和完整性的优化。
-2. **确保全局一致性**：如果局部修改影响了整体逻辑（如变量名变更、状态依赖、类型变更），请同步修改文件中的相关部分，确保整体逻辑自洽。
-3. **检查全局一致性**：检查代码是否本身存在一致性问题（如变量名冲突、状态依赖错误、类型不匹配），并进行相应修正。
-4. **依赖一致性**：确保调用依赖模块的函数签名正确。
-5. **保持原样**：除非为了满足上述第2、3、4点，否则**绝对不要**修改未选中部分的代码（包括缩进、注释等）。
-6. **完整输出**：请输出修改后的**完整伪代码内容**，不要只返回片段。
-
-重要：请直接返回修改后的完整伪代码，不要使用markdown代码块标记（如 \`\`\`），只返回纯文本内容。`,
+        system: systemPrompt,
         user: userPrompt
     };
 } 
