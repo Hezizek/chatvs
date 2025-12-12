@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { remake } from '../make-new/remake';
-
+import { refinementDiagnostics } from '../granularity-view/create-granularity-panel';
 // --- 类型定义 ---
 
 enum LineStatus {
@@ -234,6 +234,21 @@ export const confirm = (context: vscode.ExtensionContext) => {
         }
     };
 
+    const removeDiagnosticForLine = (uri: vscode.Uri, line: number) => {
+        const diagnostics = refinementDiagnostics.get(uri);
+        if (diagnostics && diagnostics.length > 0) {
+            const lineRange = new vscode.Range(line, 0, line + 1, 0);
+            // 过滤掉与当前行相交的 diagnostic
+            // 注意：DiagnosticCollection 返回的是 ReadonlyArray，需要转换
+            const newDiagnostics = [...diagnostics].filter(d => !d.range.intersection(lineRange));
+            
+            // 如果数量有变化，说明移除了 diagnostic，更新集合
+            if (newDiagnostics.length !== diagnostics.length) {
+                refinementDiagnostics.set(uri, newDiagnostics);
+            }
+        }
+    };
+
     // [修改] 命令：确认/切换行状态 (支持参数调用 或 当前选区批量处理)
     const confirmCommand = vscode.commands.registerCommand('CodeToolBox.confirmLine', (line?: number) => {
         const editor = vscode.window.activeTextEditor;
@@ -256,6 +271,7 @@ export const confirm = (context: vscode.ExtensionContext) => {
                     for (let l = startLine; l <= endLine; l++) {
                         if (mgr.confirmLine(l)) {
                             hasChanges = true;
+                            removeDiagnosticForLine(editor.document.uri, l);
                         }
                     }
                 }

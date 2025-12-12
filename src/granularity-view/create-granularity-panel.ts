@@ -23,6 +23,8 @@ const refineHighlightType = vscode.window.createTextEditorDecorationType({
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
 })
 
+export const refinementDiagnostics = vscode.languages.createDiagnosticCollection('refinement');
+
 // Invoked in activation function.
 export function registerWebviewForGranularityPanel(context: vscode.ExtensionContext) {
 
@@ -31,6 +33,8 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('GranularityView', provider)
     )
+    
+    context.subscriptions.push(refinementDiagnostics);
 
     // Register webview commands.
     context.subscriptions.push(
@@ -412,6 +416,8 @@ export function openGranularityWebview(rootPath: string) {
     
     currentRecord.onDidChange(async ( nodes: GranularityNode[] ) => {
 
+        refinementDiagnostics.clear()
+
         // Inform the webview to update UI.
         assert(currentRecord, 'No usable record for granularity panel.')
         const sequence = currentRecord.projectHandler.getLeafModuleSequence()
@@ -447,19 +453,68 @@ export function openGranularityWebview(rootPath: string) {
                     viewColumn: vscode.ViewColumn.One
                 })
 
+                // 清除旧的诊断信息
+                refinementDiagnostics.delete(doc.uri);
+
+                // 读取确认状态 (_human.json)
+                const humanJsonPath = getHumanJsonPath(activeNode.filePath);
+                let lineStatuses: LineData[] = [];
+                if (fs.existsSync(humanJsonPath)) {
+                    try {
+                        lineStatuses = JSON.parse(fs.readFileSync(humanJsonPath, 'utf8'));
+                    } catch (e) {
+                        console.error('Error reading human json:', e);
+                    }
+                }
+
                 const rangesToDecorate: vscode.Range[] = [];
+                const diagnostics: vscode.Diagnostic[] = [];
+
                 if (activeNode.highlightRanges && activeNode.highlightRanges.length > 0) {
-                    // 处理多段高亮
                     activeNode.highlightRanges.forEach(r => {
                         const startPos = doc.positionAt(r.start);
                         const endPos = doc.positionAt(r.end);
+                        
+                        // 1. 背景高亮：依然保持 Range 整体高亮，这样背景色是连贯的
                         rangesToDecorate.push(new vscode.Range(startPos, endPos));
+
+                        // 2. 诊断信息：改为逐行生成
+                        for (let l = startPos.line; l <= endPos.line; l++) {
+                            const textLine = doc.lineAt(l);
+                            if (textLine.isEmptyOrWhitespace) {
+                                continue;
+                            }
+
+                            // 检查当前行状态：1 代表 Human (Confirmed)
+                            const isConfirmed = lineStatuses[l]?.type === 1;
+
+                            if (!isConfirmed) {
+                                // [核心修改] 使用 doc.lineAt(l).range 获取该行实际文本的范围
+                                // 这样波浪线会紧贴代码文本，且显示更稳定
+                                const textLine = doc.lineAt(l);
+                                
+                                // 如果是空行，range 长度为 0，VS Code 通常不会在空行显示波浪线
+                                // 这是符合预期的（空行不需要待确认标记）
+                                if (!textLine.isEmptyOrWhitespace) {
+                                    const diagnostic = new vscode.Diagnostic(
+                                        textLine.range, 
+                                        '局部精化变更 (待确认)',
+                                        vscode.DiagnosticSeverity.Information
+                                    );
+                                    diagnostic.source = 'CodeSketcher';
+                                    diagnostics.push(diagnostic);
+                                }
+                            }
+                        }
                     });
+                    
                     editor.setDecorations(refineHighlightType, rangesToDecorate);
                 } else {
-                    // 如果没有高亮信息，清除之前的装饰（防止复用 editor 时残留）
                     editor.setDecorations(refineHighlightType, [])
                 }
+
+                refinementDiagnostics.set(doc.uri, diagnostics);
+
                 if (rangesToDecorate.length > 0) {
                     editor.revealRange(rangesToDecorate[0], vscode.TextEditorRevealType.InCenterIfOutsideViewport);
                 }
