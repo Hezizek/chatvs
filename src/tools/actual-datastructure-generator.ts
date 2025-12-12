@@ -32,6 +32,7 @@ export function checkActualDataStructureExists(projectRootPath: string, language
  */
 export async function generateActualDataStructure(
     projectRootPath: string,
+    codeProjectRootPath: string,
     language: string,
     context: vscode.ExtensionContext
 ): Promise<string> {
@@ -52,7 +53,7 @@ export async function generateActualDataStructure(
     
     // 4. 构建输出文件路径（固定文件名，位于项目根目录）
     const dsFileName = `data_structures${suffix}`;
-    const dsFilePath = path.join(projectRootPath, dsFileName);
+    const dsFilePath = path.join(codeProjectRootPath, dsFileName);
     
     // 5. 如果文件已存在，提示用户是否覆盖
     if (fs.existsSync(dsFilePath)) {

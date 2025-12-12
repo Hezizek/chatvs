@@ -9,17 +9,19 @@ import { GranularityViewProvider } from './granularity-view-provider'
 import { GranularityNode, GranularityRecord } from './granularity-record'
 import { getSrcFileSuffix } from '../tools/lang-util'
 import { cleanLLMResponse, getHumanJsonPath, LineData } from './granularity-view-utils'
+import { initialProject } from '../tools/project-initializer'
+import { writeModule } from '../tools/module-writer'
+import { updateRootLaunchConfig } from '../tools/launch-config-updater'
 
 export let currentRecord: GranularityRecord | null = null
 
 const refineHighlightType = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
     backgroundColor: new vscode.ThemeColor('diffEditor.insertedTextBackground'),
-    borderColor: new vscode.ThemeColor('diffEditor.insertedTextBorder'), 
-    overviewRulerColor: new vscode.ThemeColor('diffEditor.insertedTextOverviewRuler'),
-    overviewRulerLane: vscode.OverviewRulerLane.Right,
+    overviewRulerColor: '#CCA700',
+    overviewRulerLane: vscode.OverviewRulerLane.Full,
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
 })
-
 
 // Invoked in activation function.
 export function registerWebviewForGranularityPanel(context: vscode.ExtensionContext) {
@@ -314,27 +316,35 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
             const language = payload && payload.language ? payload.language : 'python'
             const fileSuffix = getSrcFileSuffix(language) || '.txt'
+            const aiPath = settings.getAiPath();
+
+            const projectHandlerRoot = targetRecord.projectHandler.rootPath;
+            const projectName = path.basename(projectHandlerRoot);
+            const codeProjectRoot = path.join(aiPath, '.codes', projectName);
+
+            const rootPath = targetRecord.getRootPath()
+            const relativePath = path.relative(aiPath, rootPath)
+            const currentModuleName = relativePath.split(path.sep).join('.')
+            const sequence = targetRecord.projectHandler.getLeafModuleSequence()
+            const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
+            const isFirstModule = (seqIndex === 0)
+            const isLastModule = (seqIndex === sequence.length - 1)
+            
 
 			vscode.window.showInformationMessage(`正在生成 ${language} 代码...`)
 
 			try {
                 const rootPath = targetRecord.getRootPath()
                 
-                // 检查是否为第一个模块（即序列中的第 0 个）
-                const relativePath = path.relative(settings.getAiPath(), rootPath)
-                const currentModuleName = relativePath.split(path.sep).join('.')
-                const sequence = targetRecord.projectHandler.getLeafModuleSequence()
-                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
-                const isFirstModule = (seqIndex === 0)
-                
                 // 如果是第一个模块，先生成实际数据结构文件
                 if (isFirstModule) {
                     console.log('[generateCode] 检测到第一个模块，开始生成实际数据结构文件...')
                     const projectRootPath = targetRecord.projectHandler.rootPath
+                    await initialProject(codeProjectRoot, language);
                     
                     try {
                         const { generateActualDataStructure } = await import('../tools/actual-datastructure-generator.js')
-                        const dsFilePath = await generateActualDataStructure(projectRootPath, language, context)
+                        const dsFilePath = await generateActualDataStructure(projectRootPath, codeProjectRoot,language, context)
                         vscode.window.showInformationMessage(`实际数据结构文件已生成: ${path.basename(dsFilePath)}`)
                         console.log('[generateCode] 实际数据结构文件生成成功:', dsFilePath)
                         
@@ -346,6 +356,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         treeProvider.localNodeTree = getlocalNodeTree()
                         treeProvider.refresh(undefined)
                         console.log('[generateCode] 已刷新树视图以显示实际数据结构文件')
+
                     } catch (dsError) {
                         console.error('[generateCode] 生成实际数据结构文件失败:', dsError)
                         vscode.window.showWarningMessage(`生成实际数据结构文件失败: ${dsError}，将继续生成代码...`)
@@ -357,10 +368,18 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				const prompt = await openaiHelper.getGenerateCodePrompt(fileContent, lastNode.description, language, rootPath)
 				const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
 				const generatedCode = cleanLLMResponse(result)
-				const timestamp = Date.now();
-				const generatedFilePath = path.join(rootPath, `generated_${timestamp}${fileSuffix}`)
+				const moduleRelativePath = path.relative(projectHandlerRoot, rootPath);
+                const generatedFilePath = await writeModule(
+                    codeProjectRoot,
+                    moduleRelativePath,
+                    generatedCode,
+                    language
+                );
 
-				fs.writeFileSync(generatedFilePath, generatedCode, 'utf8')
+                if (isLastModule) {
+                    await updateRootLaunchConfig(aiPath, projectName, generatedFilePath, language);
+                    vscode.window.showInformationMessage(`已更新调试配置: "Run ${projectName}"`);
+                }
 
                 targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, false)
 

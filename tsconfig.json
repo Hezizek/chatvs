@@ -1,5 +1,7 @@
 {
 	"compilerOptions": {
+	"moduleResolution": "Node16",
+    "types": ["vscode"],
 
 	"skipLibCheck": true,
 		"module": "Node16",
