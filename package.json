@@ -16,11 +16,11 @@
     "configuration": {
       "title": "AiProgram",
       "properties": {
-        "ai.path": {
+        "ai.projectPath": {
           "type": "string",
           "default": "",
           "scope": "application",
-          "markdownDescription": "Specify the local file path for your application. Example: D:\new"
+          "markdownDescription": "指定项目的根路径，将在此路径下创建 codes 和 pseudocodes 文件夹。例如: D:\\myproject"
         },
         "ai.language": {
           "type": "string",

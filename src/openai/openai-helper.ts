@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { z } from 'zod';
 import { validateWithSchema } from './schemas';
-import { getAzureOpenAIConfig, getAiPath } from '../settings/settings';
+import { getAzureOpenAIConfig, getAiPath, getCodesPath } from '../settings/settings';
 
 dotenv.config();
 
@@ -194,9 +194,9 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
         let dependenciesCode = '';
         for (const depModuleName of currentModule.dependencies) {
             if (codeType === 'actual') {
-                // 实际代码现在存放在 .codes 目录下
+                // 实际代码存放在 codes 目录下
                 const projectName = relativePath.split(path.sep)[0];
-                const codeProjectRoot = path.join(aiPath, '.codes', projectName);
+                const codeProjectRoot = path.join(getCodesPath(), projectName);
                 
                 // 依赖模块的相对路径（去掉项目名前缀）
                 const depModulePathParts = depModuleName.split('.');
@@ -617,9 +617,9 @@ async function getGenerateCodePromptForPython(fileContent: string, lastGranulari
         const pathParts = relativePath.split(path.sep);
         
         if (pathParts.length > 0) {
-            // 实际数据结构文件存放在 .codes 目录下，而不是 .ai 目录
+            // 实际数据结构文件存放在 codes 目录下
             const projectName = pathParts[0];
-            const codeProjectRoot = path.join(aiPath, '.codes', projectName);
+            const codeProjectRoot = path.join(getCodesPath(), projectName);
             const { getActualDataStructureContent } = await import('../tools/actual-datastructure-generator.js');
             actualDataStructureCode = getActualDataStructureContent(codeProjectRoot, 'python');
             
@@ -688,9 +688,9 @@ async function getGenerateCodePromptGeneric(fileContent: string, lastGranularity
         const pathParts = relativePath.split(path.sep);
         
         if (pathParts.length > 0) {
-            // 实际数据结构文件存放在 .codes 目录下，而不是 .ai 目录
+            // 实际数据结构文件存放在 codes 目录下
             const projectName = pathParts[0];
-            const codeProjectRoot = path.join(aiPath, '.codes', projectName);
+            const codeProjectRoot = path.join(getCodesPath(), projectName);
             const { getActualDataStructureContent } = await import('../tools/actual-datastructure-generator.js');
             actualDataStructureCode = getActualDataStructureContent(codeProjectRoot, language);
             

@@ -1,6 +1,7 @@
 // src/tools/launch-config-updater.ts
 import * as path from 'path';
 import * as fs from 'fs';
+import { getCodesPath } from '../settings/settings';
 
 /**
  * 更新根工作区的 launch.json，添加或更新指定项目的调试配置
@@ -54,8 +55,10 @@ export async function updateRootLaunchConfig(
 function generateConfigForLanguage(workspaceRoot: string, projectName: string, entryFilePath: string, language: string): any {
     // 计算相对路径
     const relativeEntryPath = path.relative(workspaceRoot, entryFilePath).split(path.sep).join('/');
-    // 锁定 CWD 到子项目根目录
-    const cwd = `\${workspaceFolder}/.codes/${projectName}`;
+    // 获取 codes 路径，并计算相对路径
+    const codesPath = getCodesPath();
+    const relativeCwd = path.relative(workspaceRoot, path.join(codesPath, projectName)).split(path.sep).join('/');
+    const cwd = `\${workspaceFolder}/${relativeCwd}`;
     const configName = `Run ${projectName} (${language})`;
 
     switch (language) {
@@ -67,7 +70,7 @@ function generateConfigForLanguage(workspaceRoot: string, projectName: string, e
                 program: `\${workspaceFolder}/${relativeEntryPath}`,
                 console: "integratedTerminal",
                 cwd: cwd,
-                envFile: `\${workspaceFolder}/.codes/${projectName}/.env`,
+                envFile: `${cwd}/.env`,
                 justMyCode: true
             };
 
