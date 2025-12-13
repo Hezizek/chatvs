@@ -247,8 +247,6 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
                         }
                     }
                     const projectName = relativePath.split(path.sep)[0];
-                    const codeProjectRoot = path.join(aiPath, '.codes', projectName);
-
                     // 依赖模块的相对路径（去掉项目名前缀）
                     const depModulePathParts = depModuleName.split('.');
                     if (depModulePathParts[0] === projectName) {

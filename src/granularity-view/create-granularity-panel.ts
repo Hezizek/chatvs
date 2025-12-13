@@ -12,6 +12,7 @@ import { cleanLLMResponse, getHumanJsonPath, LineData } from './granularity-view
 import { initialProject } from '../tools/project-initializer'
 import { writeModule } from '../tools/module-writer'
 import { updateRootLaunchConfig } from '../tools/launch-config-updater'
+import { set } from 'zod'
 
 export let currentRecord: GranularityRecord | null = null
 
@@ -385,9 +386,10 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     generatedCode,
                     language
                 );
+                const projectPath=settings.getProjectPath();
 
                 if (isLastModule) {
-                    await updateRootLaunchConfig(aiPath, projectName, generatedFilePath, language);
+                    await updateRootLaunchConfig(projectPath, projectName, generatedFilePath, language);
                     vscode.window.showInformationMessage(`已更新调试配置: "Run ${projectName}"`);
                 }
 

@@ -93,7 +93,7 @@ function checkPathSafety(targetPath: string): {
 /**
  * 获取用户配置的项目路径
  */
-function getProjectPath(): string {
+export function getProjectPath(): string {
     const projectPath = vscode.workspace.getConfiguration('ai').get<string>('projectPath')
     if (!projectPath) {
         vscode.window.showErrorMessage('项目路径未配置，请先在设置中配置 ai.projectPath。')

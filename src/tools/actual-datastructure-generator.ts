@@ -43,7 +43,12 @@ export async function generateActualDataStructure(
     }
     
     // 2. 读取 common_data_structures.json 内容
-    const commonDSJsonContent = fs.readFileSync(commonDSJsonPath, 'utf8');
+    let commonDSJsonContent = fs.readFileSync(commonDSJsonPath, 'utf8');
+
+    // 临时措施，将commonDSJsonContent中的project.前缀去掉
+    const projectName= path.basename(projectRootPath);
+    const prefixToRemove = projectName + '.';
+    commonDSJsonContent = commonDSJsonContent.replace(new RegExp(`"${prefixToRemove}`, 'g'), '"');
     
     // 3. 获取语言对应的文件后缀
     const suffix = getSrcFileSuffix(language);

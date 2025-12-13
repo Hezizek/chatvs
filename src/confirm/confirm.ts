@@ -237,7 +237,7 @@ export const confirm = (context: vscode.ExtensionContext) => {
     const removeDiagnosticForLine = (uri: vscode.Uri, line: number) => {
         const diagnostics = refinementDiagnostics.get(uri);
         if (diagnostics && diagnostics.length > 0) {
-            const lineRange = new vscode.Range(line, 0, line + 1, 0);
+            const lineRange = new vscode.Range(line, 0, line + 0, 0);
             // 过滤掉与当前行相交的 diagnostic
             // 注意：DiagnosticCollection 返回的是 ReadonlyArray，需要转换
             const newDiagnostics = [...diagnostics].filter(d => !d.range.intersection(lineRange));
