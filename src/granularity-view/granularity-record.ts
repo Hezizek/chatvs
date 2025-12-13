@@ -5,12 +5,14 @@ import * as path from 'path'
 import * as settings from '../settings/settings'
 import { ProjectHandler } from '../tools/project-handler'
 
+type GranularityNodeType = 'pseudo' | 'code'
 
 export interface GranularityNode {
-    index: number,
-    description: string,
-    filePath: string,
-    isActive: boolean,
+    index: number
+    description: string
+    filePath: string
+    nodeType: GranularityNodeType
+    isActive: boolean
     highlightRanges?: { start: number, end: number }[]
 }
 
@@ -50,6 +52,7 @@ export class GranularityRecord {
     public appendNode(
         filePath: string,
         description: string,
+        nodeType: GranularityNodeType,
         show: boolean = true,
         highlightRanges?: { start: number, end: number }[]
     ): void {
@@ -57,6 +60,7 @@ export class GranularityRecord {
             index: this.nodes.length + 1,
             description,
             filePath,
+            nodeType,
             isActive: true,
             highlightRanges
         }
@@ -88,6 +92,10 @@ export class GranularityRecord {
     
     public getCurrentIndex(): number {
         return this.currentIndex
+    }
+
+    public getCurrentNode(): GranularityNode | undefined {
+        return this.nodes[this.currentIndex]
     }
 
     public getLastNode(): GranularityNode {
