@@ -230,25 +230,6 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
             })
         )
 
-        context.subscriptions.push(
-            vscode.commands.registerCommand('CodeToolBox.extractProject', async (node: DirectoryNode) => {
-                await vscode.window.withProgress({
-                    location: vscode.ProgressLocation.Notification,
-                    title: '正在提取项目...',
-                    cancellable: false
-                }, async () => {
-                    try {
-                        // Currently hard-coded as python.
-                        await extractProject(node.absolutePath, 'python')
-                        vscode.window.showInformationMessage('项目提取成功！')
-                    } catch (error) {
-                        vscode.window.showErrorMessage(`项目提取失败。`)
-                        console.error('Failed to extract project: ', error)
-                    }
-                })
-            })
-        )
-
         vscode.commands.executeCommand("setContext", "CodeToolBox.chatGPTView", true)
 
         function checkModuleDivisionButtonState() {

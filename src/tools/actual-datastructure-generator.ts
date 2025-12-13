@@ -4,6 +4,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as openaiHelper from '../openai/openai-helper';
 import { getSrcFileSuffix } from './lang-util';
+import * as settings from '../settings/settings';
+import { DesignmentTreeDataProvider } from '../designment-tree-view/designment-tree-data-provider';
+
 
 /**
  * 检查项目根目录下是否已存在实际数据结构文件
@@ -91,6 +94,11 @@ export async function generateActualDataStructure(
     
     // 8. 写入文件
     fs.writeFileSync(dsFilePath, cleanedCode, 'utf8');
+    const aiPath = settings.getAiPath();
+    const projectDirName = path.basename(codeProjectRootPath);
+    const dsFileNameInAiPath = path.join(projectDirName, dsFileName);
+    fs.copyFileSync(dsFilePath, path.join(aiPath, dsFileNameInAiPath));
+    DesignmentTreeDataProvider.getInstance().refresh(undefined);
     
     console.log(`[ActualDS] 实际数据结构文件已生成: ${dsFilePath}`);
     

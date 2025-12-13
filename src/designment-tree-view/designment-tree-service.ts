@@ -28,7 +28,7 @@ export async function createModule(
 
         const firstGranulairty: GranularityNode = {
             index: 1,
-            description: '粒度 0',
+            description: '模块规约',
             filePath: designmentPath,
             nodeType: 'pseudo',
             isActive: false
