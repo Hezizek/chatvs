@@ -17,7 +17,7 @@ let openaiClient: AzureOpenAI | undefined;
 async function initializeOpenAI(): Promise<AzureOpenAI> {
     if (!openaiClient) {
         const { endpoint, apiKey } = await getAzureOpenAIConfig();
-        
+
         openaiClient = new AzureOpenAI({
             endpoint,
             apiKey,
@@ -43,7 +43,7 @@ export async function callOpenAIForJSON<T = any>(
 ): Promise<string> {
     let lastError: any = null;
     let modifiedUserPrompt = userPrompt;
-    
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
             const client = await initializeOpenAI();
@@ -61,19 +61,19 @@ export async function callOpenAIForJSON<T = any>(
                     }
                 ],
                 temperature: 0.7,
-                max_tokens: 1024*8
+                max_tokens: 1024 * 8
             });
 
             const content = response.choices[0]?.message?.content || '';
-            
+
             // 如果没有提供 schema，直接返回
             if (!schema) {
                 return content;
             }
-            
+
             // 清理 JSON，移除可能的 markdown 标记
             const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
-            
+
             // 尝试解析 JSON
             let parsedData: any;
             try {
@@ -81,7 +81,7 @@ export async function callOpenAIForJSON<T = any>(
             } catch (parseError) {
                 console.error(`[callOpenAIForJSON] JSON 解析失败 (第 ${attempt + 1} 次尝试):`, parseError);
                 lastError = new Error(`JSON 解析失败: ${parseError}`);
-                
+
                 // 如果不是最后一次尝试，继续重试
                 if (attempt < maxRetries - 1) {
                     console.log(`[callOpenAIForJSON] 将在下次尝试中要求 LLM 返回有效的 JSON`);
@@ -91,17 +91,17 @@ export async function callOpenAIForJSON<T = any>(
                 }
                 throw lastError;
             }
-            
+
             // 使用 schema 验证
             const validationResult = validateWithSchema(schema, parsedData);
-            
+
             if (validationResult.success) {
                 console.log(`[callOpenAIForJSON] Schema 验证通过 (第 ${attempt + 1} 次尝试)`);
                 return content;
             } else {
                 console.error(`[callOpenAIForJSON] Schema 验证失败 (第 ${attempt + 1} 次尝试):`, validationResult.errors);
                 lastError = new Error(`Schema 验证失败: ${validationResult.errors.join('; ')}`);
-                
+
                 // 如果不是最后一次尝试，继续重试并提供错误信息
                 if (attempt < maxRetries - 1) {
                     console.log(`[callOpenAIForJSON] 将在下次尝试中修正验证错误`);
@@ -114,7 +114,7 @@ export async function callOpenAIForJSON<T = any>(
         } catch (error) {
             lastError = error;
             console.error(`[callOpenAIForJSON] 调用失败 (第 ${attempt + 1} 次尝试):`, error);
-            
+
             // 如果是最后一次尝试或者是 API 错误（非验证错误），直接抛出
             if (attempt === maxRetries - 1 || (error instanceof Error && error.message.includes('API'))) {
                 vscode.window.showErrorMessage(`OpenAI API 调用失败: ${error}`);
@@ -122,7 +122,7 @@ export async function callOpenAIForJSON<T = any>(
             }
         }
     }
-    
+
     // 理论上不会到这里，但为了类型安全
     throw lastError || new Error('未知错误');
 }
@@ -143,25 +143,25 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
         // 使用 path.relative 和 path.dirname 来安全地获取项目根路径
         // currentModulePath 是模块目录，需要向上找到项目根目录
         let projectRootPath = currentModulePath;
-        
+
         // 向上查找，直到找到包含 leaf_modules.json 的目录
         let foundLeafModules = false;
         let searchDepth = 0;
         const maxSearchDepth = 10; // 防止无限循环
-        
+
         while (searchDepth < maxSearchDepth) {
             const testPath = path.join(projectRootPath, 'leaf_modules.json');
             if (fs.existsSync(testPath)) {
                 foundLeafModules = true;
                 break;
             }
-            
+
             const parentPath = path.dirname(projectRootPath);
             if (parentPath === projectRootPath) {
                 // 已经到达根目录
                 break;
             }
-            
+
             projectRootPath = parentPath;
             searchDepth++;
         }
@@ -172,7 +172,7 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
         }
 
         const leafModulesPath = path.join(projectRootPath, 'leaf_modules.json');
-        
+
         // 读取leaf_modules.json
         const leafModulesContent = fs.readFileSync(leafModulesPath, 'utf-8');
         const leafModules = JSON.parse(leafModulesContent);
@@ -203,24 +203,25 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
                 if (depModulePathParts[0] === projectName) {
                     depModulePathParts.shift(); // 去掉项目名
                 }
-                
+                const depModuleNameWithoutProject = depModulePathParts.join('.');
+
                 const depCodePath = path.join(codeProjectRoot, ...depModulePathParts);
-                
+
                 // 尝试匹配各种语言的文件扩展名
                 const extensions = ['.py', '.java', '.c', '.cpp', '.js', '.ts'];
                 let foundFile = false;
-                
+
                 for (const ext of extensions) {
                     const depFilePath = depCodePath + ext;
                     if (fs.existsSync(depFilePath)) {
                         const depCode = fs.readFileSync(depFilePath, 'utf-8');
-                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
+                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleNameWithoutProject} ===\n${depCode}\n`;
                         console.log(`[getDependencyModulesCode] 成功读取依赖模块的实际代码:`, depModuleName, '文件:', path.basename(depFilePath));
                         foundFile = true;
                         break;
                     }
                 }
-                
+
                 if (!foundFile) {
                     console.log(`[getDependencyModulesCode] 未找到依赖模块的实际代码文件:`, depModuleName, '搜索路径:', depCodePath);
                 }
@@ -231,9 +232,9 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
 
                 if (fs.existsSync(depNodeJsonPath)) {
                     const nodeData = JSON.parse(fs.readFileSync(depNodeJsonPath, 'utf-8'));
-                    
+
                     let targetNode = null;
-                    
+
                     // 查找最后一版伪代码：从后往前找第一个不是 generated_ 开头的文件
                     for (let i = nodeData.length - 1; i >= 0; i--) {
                         const node = nodeData[i];
@@ -245,10 +246,19 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
                             }
                         }
                     }
-                    
+                    const projectName = relativePath.split(path.sep)[0];
+                    const codeProjectRoot = path.join(aiPath, '.codes', projectName);
+
+                    // 依赖模块的相对路径（去掉项目名前缀）
+                    const depModulePathParts = depModuleName.split('.');
+                    if (depModulePathParts[0] === projectName) {
+                        depModulePathParts.shift(); // 去掉项目名
+                    }
+                    const depModuleNameWithoutProject = depModulePathParts.join('.');
+
                     if (targetNode && targetNode.filePath && fs.existsSync(targetNode.filePath)) {
                         const depCode = fs.readFileSync(targetNode.filePath, 'utf-8');
-                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
+                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleNameWithoutProject} ===\n${depCode}\n`;
                         console.log(`[getDependencyModulesCode] 成功读取依赖模块的伪代码:`, depModuleName, '文件:', path.basename(targetNode.filePath));
                     } else {
                         console.log(`[getDependencyModulesCode] 未找到依赖模块的伪代码节点:`, depModuleName);
@@ -299,9 +309,17 @@ export async function getJson2PsePrompt(fileContent: string, currentModulePath?:
         }
         extensionPath = parent;
     }
-    
+
     const json2psePromptPath = path.join(extensionPath, 'resources', 'prompts', 'json2pse_v5.md');
-    
+
+    const projectName = currentModulePath ? path.basename(path.dirname(currentModulePath)) : '';
+
+    // 临时措施，从 fileContent 中移除所有项目名前缀
+    if (projectName) {
+        const regex = new RegExp(`"${projectName}\\.`,"g");
+        fileContent = fileContent.replace(regex, '"');
+    }
+
     let userPrompt = `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n`;
 
     if (commonDSContent) {
@@ -405,16 +423,16 @@ export async function getGlobalRefinePromptDetailed(fileContent: string, current
         }
         extensionPath = parent;
     }
-    
+
     const promptPath = path.join(extensionPath, 'resources', 'prompts', '细粒度精化Prompt.md');
-    
+
     // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
     let userPrompt = `# Input 1: Target Module Pseudocode\n\n${fileContent}\n\n`;
-    
+
     if (dependenciesCode) {
         userPrompt += `# Input 2: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
     }
-    
+
     if (commonDSContent) {
         userPrompt += `# Input 3: Common Data Structures\n\n${commonDSContent}\n\n`;
     }
@@ -429,7 +447,7 @@ export async function getGlobalRefinePromptDetailed(fileContent: string, current
             user: userPrompt
         };
     }
-    
+
     const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
@@ -471,16 +489,16 @@ export async function getGlobalRefinePromptCoarse(fileContent: string, currentMo
         }
         extensionPath = parent;
     }
-    
+
     const promptPath = path.join(extensionPath, 'resources', 'prompts', '粗粒度精化prompt.md');
-    
+
     // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
     let userPrompt = `# Input 1: Target Module Pseudocode\n\n${fileContent}\n\n`;
-    
+
     if (dependenciesCode) {
         userPrompt += `# Input 2: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
     }
-    
+
     if (commonDSContent) {
         userPrompt += `# Input 3: Common Data Structures\n\n${commonDSContent}\n\n`;
     }
@@ -495,7 +513,7 @@ export async function getGlobalRefinePromptCoarse(fileContent: string, currentMo
             user: userPrompt
         };
     }
-    
+
     const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
@@ -541,22 +559,22 @@ export async function getLocalRefinePrompt(
         }
         extensionPath = parent;
     }
-    
+
     const promptPath = path.join(extensionPath, 'resources', 'prompts', '局部精化prompt.md');
 
     // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
     let userPrompt = `# Input 1: Target Module Pseudocode (Full)\n\n${fileContent}\n\n`;
-    
+
     userPrompt += `# Input 2: Selected Code Fragment\n\n第 ${startLine} - ${endLine} 行：\n\n${selectedCode}\n\n`;
-    
+
     if (dependenciesCode) {
         userPrompt += `# Input 3: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
     }
-    
+
     if (commonDSContent) {
         userPrompt += `# Input 4: Common Data Structures\n\n${commonDSContent}\n\n`;
     }
-    
+
     userPrompt += `请对选中部分进行精化，并返回修改后的**完整**伪代码内容。直接返回完整伪代码，不要使用markdown代码块标记（如 \`\`\`），只返回纯文本内容。`;
 
     if (!fs.existsSync(promptPath)) {
@@ -567,14 +585,14 @@ export async function getLocalRefinePrompt(
             user: userPrompt
         };
     }
-    
+
     const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
         system: systemPrompt,
         user: userPrompt
     };
-} 
+}
 
 /**
  * 代码生成提示词 - 从伪代码生成实际代码
@@ -584,14 +602,14 @@ export async function getGenerateCodePrompt(fileContent: string, lastGranularity
     switch (language.toLowerCase()) {
         case 'python':
             return getGenerateCodePromptForPython(fileContent, lastGranularity, currentModulePath);
-        
+
         // 其他语言可以在这里扩展
         // case 'java':
         //     return getGenerateCodePromptForJava(fileContent, lastGranularity, currentModulePath);
         // case 'cpp':
         // case 'c++':
         //     return getGenerateCodePromptForCpp(fileContent, lastGranularity, currentModulePath);
-        
+
         default:
             // 回退到通用实现（使用硬编码prompt）
             console.warn(`[getGenerateCodePrompt] 语言 ${language} 暂未实现专用prompt，使用通用prompt`);
@@ -615,14 +633,14 @@ async function getGenerateCodePromptForPython(fileContent: string, lastGranulari
         const aiPath = getAiPath();
         const relativePath = path.relative(aiPath, currentModulePath);
         const pathParts = relativePath.split(path.sep);
-        
+
         if (pathParts.length > 0) {
             // 实际数据结构文件存放在 codes 目录下
             const projectName = pathParts[0];
             const codeProjectRoot = path.join(getCodesPath(), projectName);
             const { getActualDataStructureContent } = await import('../tools/actual-datastructure-generator.js');
             actualDataStructureCode = getActualDataStructureContent(codeProjectRoot, 'python');
-            
+
             if (actualDataStructureCode) {
                 console.log('[getGenerateCodePromptForPython] 成功读取实际数据结构文件');
             } else {
@@ -640,20 +658,20 @@ async function getGenerateCodePromptForPython(fileContent: string, lastGranulari
         }
         extensionPath = parent;
     }
-    
+
     const promptPath = path.join(extensionPath, 'resources', 'prompts', 'generateCode_python.md');
-    
+
     // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
     let userPrompt = `# Input 1: Target Module Pseudocode\n\n${fileContent}\n\n`;
-    
+
     if (actualDataStructureCode) {
         userPrompt += `# Input 2: Project Data Structures\n\n${actualDataStructureCode}\n\n`;
     }
-    
+
     if (dependenciesCode) {
         userPrompt += `# Input 3: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
     }
-    
+
     userPrompt += `请根据上述伪代码的整体逻辑生成完整、可运行的 Python 代码。请直接返回 Python 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`;
 
     if (!fs.existsSync(promptPath)) {
@@ -661,7 +679,7 @@ async function getGenerateCodePromptForPython(fileContent: string, lastGranulari
         // 回退到通用实现
         return getGenerateCodePromptGeneric(fileContent, lastGranularity, 'python', currentModulePath);
     }
-    
+
     const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
@@ -686,14 +704,14 @@ async function getGenerateCodePromptGeneric(fileContent: string, lastGranularity
         const aiPath = getAiPath();
         const relativePath = path.relative(aiPath, currentModulePath);
         const pathParts = relativePath.split(path.sep);
-        
+
         if (pathParts.length > 0) {
             // 实际数据结构文件存放在 codes 目录下
             const projectName = pathParts[0];
             const codeProjectRoot = path.join(getCodesPath(), projectName);
             const { getActualDataStructureContent } = await import('../tools/actual-datastructure-generator.js');
             actualDataStructureCode = getActualDataStructureContent(codeProjectRoot, language);
-            
+
             if (actualDataStructureCode) {
                 console.log('[getGenerateCodePromptGeneric] 成功读取实际数据结构文件');
             } else {
@@ -711,20 +729,20 @@ async function getGenerateCodePromptGeneric(fileContent: string, lastGranularity
         }
         extensionPath = parent;
     }
-    
+
     const promptPath = path.join(extensionPath, 'resources', 'prompts', 'generateCode.md');
 
     // 构建用户提示词，按照 prompt.md 中的 Inputs 顺序传递
     let userPrompt = `# Input 1: Target Module Pseudocode\n\n${fileContent}\n\n`;
-    
+
     if (actualDataStructureCode) {
         userPrompt += `# Input 2: Project Data Structures\n\n${actualDataStructureCode}\n\n`;
     }
-    
+
     if (dependenciesCode) {
         userPrompt += `# Input 3: Upstream Dependency Implementations\n${dependenciesCode}\n\n`;
     }
-    
+
     userPrompt += `请根据上述伪代码的整体逻辑生成完整、可运行的 ${language} 代码。请直接返回 ${language} 代码，不要使用markdown代码块标记（\`\`\`），只返回纯代码内容。`;
 
     if (!fs.existsSync(promptPath)) {
@@ -735,7 +753,7 @@ async function getGenerateCodePromptGeneric(fileContent: string, lastGranularity
             user: userPrompt
         };
     }
-    
+
     const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
     return {
@@ -748,7 +766,7 @@ export async function getModuleDivisionPrompt1(filePath: string, context: vscode
     const systemPromptPath = context.asAbsolutePath('resources/prompts/非碎片化模块划分.md');
     const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
     const systemPrompt = new TextDecoder().decode(systemPromptBytes);
-    
+
     const fileContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
     const fileContent = new TextDecoder().decode(fileContentBytes);
 
@@ -756,14 +774,14 @@ export async function getModuleDivisionPrompt1(filePath: string, context: vscode
     const userPrompt = `请根据以下原始需求文档进行模块划分：\n\n${fileContent}\n\n项目名称为：${projectName}。你所划分的模块名称应该使用项目名称作为前缀，以确保唯一性。例如，如果项目名称是“a“，则模块名称可以是”a/module1“、“a/module2“等。\n\n
     请直接返回符合要求的 JSON 数组，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
 
-    
+
     return {
         system: systemPrompt,
         user: userPrompt
     };
 }
 
-export async function getModuleDivisionPrompt2(modulesPath:string, requirementsPath:string, moduleName: string, context: vscode.ExtensionContext): Promise<{ system: string; user: string }> {
+export async function getModuleDivisionPrompt2(modulesPath: string, requirementsPath: string, moduleName: string, context: vscode.ExtensionContext): Promise<{ system: string; user: string }> {
     const systemPromptPath = context.asAbsolutePath('resources/prompts/子模块划分.md');
     const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
     const systemPrompt = new TextDecoder().decode(systemPromptBytes);
@@ -782,17 +800,17 @@ export async function getModuleDivisionPrompt2(modulesPath:string, requirementsP
     };
 }
 
-export async function getCommonDSPrompt(leafModulesPath:string, requirementsPath:string, context: vscode.ExtensionContext): Promise<{ system: string; user: string }> {
+export async function getCommonDSPrompt(leafModulesPath: string, requirementsPath: string, context: vscode.ExtensionContext): Promise<{ system: string; user: string }> {
     const systemPromptPath = context.asAbsolutePath('resources/prompts/通用数据结构提示词.md');
     const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
     const systemPrompt = new TextDecoder().decode(systemPromptBytes);
 
     const modulesContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(leafModulesPath));
     const modulesContent = new TextDecoder().decode(modulesContentBytes);
-    
+
     const requirementsContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(requirementsPath));
     const requirementsContent = new TextDecoder().decode(requirementsContentBytes);
-    
+
     const userPrompt = `原始需求文档：\n${requirementsContent}\n\n当前系统架构（包含所有模块的 JSON 列表）：\n${modulesContent}\n\n请直接返回符合要求的 JSON 数组，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
 
     return {
@@ -801,22 +819,22 @@ export async function getCommonDSPrompt(leafModulesPath:string, requirementsPath
     };
 }
 
-export async function getLeafModules(leafModulesPath:string, requirementsPath:string, commonDSPath:string, context: vscode.ExtensionContext): Promise<{ system: string; user: string }> {
+export async function getLeafModules(leafModulesPath: string, requirementsPath: string, commonDSPath: string, context: vscode.ExtensionContext): Promise<{ system: string; user: string }> {
     const systemPromptPath = context.asAbsolutePath('resources/prompts/所有叶子节点生成提示词.md');
     const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
     const systemPrompt = new TextDecoder().decode(systemPromptBytes);
 
     const modulesContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(leafModulesPath));
     const modulesContent = new TextDecoder().decode(modulesContentBytes);
-    
+
     const requirementsContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(requirementsPath));
     const requirementsContent = new TextDecoder().decode(requirementsContentBytes);
-    
+
     const commonDSContentBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(commonDSPath));
     const commonDSContent = new TextDecoder().decode(commonDSContentBytes);
-    
+
     const userPrompt = `原始需求文档：\n${requirementsContent}\n\n当前系统架构（包含所有模块的 JSON 列表）：\n${modulesContent}\n\n通用数据结构定义：\n${commonDSContent}\n\n请直接返回符合要求的 JSON 数组，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
-    
+
     return {
         system: systemPrompt,
         user: userPrompt
@@ -839,14 +857,14 @@ export async function getActualDataStructurePrompt(
     switch (language.toLowerCase()) {
         case 'python':
             return getActualDataStructurePromptForPython(commonDSJsonContent, context);
-        
+
         // 其他语言可以在这里扩展
         // case 'java':
         //     return getActualDataStructurePromptForJava(commonDSJsonContent, context);
         // case 'cpp':
         // case 'c++':
         //     return getActualDataStructurePromptForCpp(commonDSJsonContent, context);
-        
+
         default:
             // 回退到通用实现（使用通用prompt）
             console.warn(`[getActualDataStructurePrompt] 语言 ${language} 暂未实现专用prompt，使用通用prompt`);
@@ -864,9 +882,9 @@ async function getActualDataStructurePromptForPython(
     const systemPromptPath = context.asAbsolutePath('resources/prompts/commonDataStructure_python.md');
     const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
     const systemPrompt = new TextDecoder().decode(systemPromptBytes);
-    
+
     const userPrompt = `# Input 1: Source JSON\n\n${commonDSJsonContent}\n\n# Input 2: Target Language\n\nPython\n\n请将上述 JSON 定义的所有数据结构转换为 Python 语言的纯数据代码。请直接返回代码，不要使用 markdown 代码块标记（如 \`\`\`），只返回纯代码内容。`;
-    
+
     return {
         system: systemPrompt,
         user: userPrompt
@@ -884,9 +902,9 @@ async function getActualDataStructurePromptGeneric(
     const systemPromptPath = context.asAbsolutePath('resources/prompts/commonDataStructure.md');
     const systemPromptBytes = await vscode.workspace.fs.readFile(vscode.Uri.file(systemPromptPath));
     const systemPrompt = new TextDecoder().decode(systemPromptBytes);
-    
+
     const userPrompt = `Source JSON：\n${commonDSJsonContent}\n\nTarget Language: ${language}\n\n请直接返回代码，不要使用 markdown 代码块标记。`;
-    
+
     return {
         system: systemPrompt,
         user: userPrompt
