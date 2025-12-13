@@ -73,7 +73,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const generatedFilePath = path.join(rootPath, `pseudotrans_json2pse_${timestamp}.txt`)
             
                 fs.writeFileSync(generatedFilePath, result, 'utf8')
-                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, 'pseudo', false)
+                targetRecord.appendNode(generatedFilePath, '伪代码 ' + lastNode.index, 'pseudo', false)
 
                 // Open generated file.
                 const doc = await vscode.workspace.openTextDocument(generatedFilePath)
@@ -125,7 +125,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const generatedFilePath = path.join(rootPath, `pseudotrans_global_refined_${timestamp}.txt`)
             
                 fs.writeFileSync(generatedFilePath, result, 'utf8')
-                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, 'pseudo', false)
+                targetRecord.appendNode(generatedFilePath,  '伪代码 ' + lastNode.index, 'pseudo', false)
 
                 // Open generated file.
                 const doc = await vscode.workspace.openTextDocument(generatedFilePath)
@@ -154,7 +154,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
             const targetFilePath = lastNode.filePath
 
             if (!editor || path.relative(targetFilePath, editor.document.fileName) !== '' || editor.selection.isEmpty) {
-                vscode.window.showWarningMessage('局部精化前，请先打开模块最新粒度的文件并选中要精化的部分。')
+                vscode.window.showWarningMessage('局部精化前，请先打开模块最新伪代码文件并选中要精化的部分。')
                 return
             }
 
@@ -251,7 +251,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 fs.writeFileSync(newJsonPath, JSON.stringify(newStatus, null, 2), 'utf-8')
                 fs.writeFileSync(generatedFilePath, refinedContent, 'utf8')
 
-                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, 'pseudo', false, highlightRanges)
+                targetRecord.appendNode(generatedFilePath, '伪代码 ' + lastNode.index, 'pseudo', false, highlightRanges)
                 vscode.window.showInformationMessage(`局部精化完成，文件已保存: ${path.basename(generatedFilePath)}`)
 
                 // Open generated file.
@@ -275,12 +275,17 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
             const currentIndex = currentRecord.getCurrentIndex()
 			if (currentIndex < 0) {
-				vscode.window.showWarningMessage('您还没有选择要回退到的粒度。')
+				vscode.window.showWarningMessage('您还没有选择要回退到的伪代码记录。')
 				return
 			}
 
 			currentRecord.backTo(currentIndex, false)
-			vscode.window.showInformationMessage(`当前模块已回退至粒度 ${currentIndex}。`)
+            if (currentIndex === 0 ) {
+                vscode.window.showInformationMessage(`当前模块已回退至模块规约。`)
+            }
+            else{
+                vscode.window.showInformationMessage(`当前模块已回退至伪代码 ${currentIndex}。`)
+            }
 
             const aiPath = settings.getAiPath()
             const rootPath = currentRecord.getRootPath()
@@ -393,7 +398,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     vscode.window.showInformationMessage(`已更新调试配置: "Run ${projectName}"`);
                 }
 
-                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, 'code', false)
+                targetRecord.appendNode(generatedFilePath, '实际代码（'+language+'）', 'code', false)
 
                 const doc = await vscode.workspace.openTextDocument(generatedFilePath)
 				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One })
