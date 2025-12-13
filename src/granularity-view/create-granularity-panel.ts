@@ -280,12 +280,10 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 			}
 
 			currentRecord.backTo(currentIndex, false)
-            if (currentIndex === 0 ) {
-                vscode.window.showInformationMessage(`当前模块已回退至模块规约。`)
-            }
-            else{
-                vscode.window.showInformationMessage(`当前模块已回退至伪代码 ${currentIndex}。`)
-            }
+            const currentNode = currentRecord.getCurrentNode()
+            const description = currentNode ? currentNode.description : '未知伪代码'
+
+            vscode.window.showInformationMessage(`当前模块已回退至`+description+`。`)
 
             const aiPath = settings.getAiPath()
             const rootPath = currentRecord.getRootPath()
