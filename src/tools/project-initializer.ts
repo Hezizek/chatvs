@@ -4,7 +4,7 @@ import * as fs from 'fs';
 
 /**
  * 初始化项目结构 (创建必要的环境文件)
- * @param projectRoot 项目在 .codes 下的根目录
+ * @param projectRoot 项目在 codes 下的根目录
  * @param language 目标语言
  */
 export async function initialProject(projectRoot: string, language: string) {
