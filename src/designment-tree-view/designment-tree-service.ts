@@ -30,6 +30,7 @@ export async function createModule(
             index: 1,
             description: '粒度 0',
             filePath: designmentPath,
+            nodeType: 'pseudo',
             isActive: false
         }
 

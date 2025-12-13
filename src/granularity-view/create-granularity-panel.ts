@@ -72,7 +72,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const generatedFilePath = path.join(rootPath, `pseudotrans_json2pse_${timestamp}.txt`)
             
                 fs.writeFileSync(generatedFilePath, result, 'utf8')
-                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, false)
+                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, 'pseudo', false)
 
                 // Open generated file.
                 const doc = await vscode.workspace.openTextDocument(generatedFilePath)
@@ -124,7 +124,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 const generatedFilePath = path.join(rootPath, `pseudotrans_global_refined_${timestamp}.txt`)
             
                 fs.writeFileSync(generatedFilePath, result, 'utf8')
-                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, false)
+                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, 'pseudo', false)
 
                 // Open generated file.
                 const doc = await vscode.workspace.openTextDocument(generatedFilePath)
@@ -250,7 +250,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 fs.writeFileSync(newJsonPath, JSON.stringify(newStatus, null, 2), 'utf-8')
                 fs.writeFileSync(generatedFilePath, refinedContent, 'utf8')
 
-                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, false, highlightRanges)
+                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, 'pseudo', false, highlightRanges)
                 vscode.window.showInformationMessage(`局部精化完成，文件已保存: ${path.basename(generatedFilePath)}`)
 
                 // Open generated file.
@@ -283,11 +283,12 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
             const aiPath = settings.getAiPath()
             const rootPath = currentRecord.getRootPath()
+            const projectHandler = currentRecord.projectHandler
                 
             try {
                 const relativePath = path.relative(aiPath, rootPath)
                 const currentModuleName = relativePath.split(path.sep).join('.')
-                const sequence = currentRecord.projectHandler.getLeafModuleSequence()
+                const sequence = projectHandler.getLeafModuleSequence()
                 const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
 
                 if (seqIndex >= 0 && seqIndex < sequence.length - 1) {
@@ -302,8 +303,13 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     }
                 }
 
+                const currentNode = currentRecord.getCurrentNode()
+                if (!currentNode) {
+                    throw Error('Unexpected error: no selected granularity to rollback to.')
+                }
+
                 // Synchronize seq.json file.
-                currentRecord.projectHandler.setOnGoingModule(seqIndex)
+                projectHandler.setOnGoingModule(currentNode.nodeType === 'pseudo' ? seqIndex : seqIndex + 1)
                 currentRecord.fireUpdate()
 
             } catch (error) {
@@ -385,7 +391,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     vscode.window.showInformationMessage(`已更新调试配置: "Run ${projectName}"`);
                 }
 
-                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, false)
+                targetRecord.appendNode(generatedFilePath, '粒度 ' + lastNode.index, 'code', false)
 
                 const doc = await vscode.workspace.openTextDocument(generatedFilePath)
 				await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.One })
