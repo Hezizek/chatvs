@@ -17,6 +17,80 @@ export const registerCreateSetting = (context: vscode.ExtensionContext) => {
 let hasCheckedStructure = false;
 
 /**
+ * 检查路径是否安全
+ * 返回: { isSafe: boolean, warning?: string, needsConfirmation?: boolean }
+ */
+function checkPathSafety(targetPath: string): { 
+    isSafe: boolean; 
+    warning?: string; 
+    needsConfirmation?: boolean 
+} {
+    const normalized = path.normalize(targetPath);
+    const parsed = path.parse(normalized);
+    const normalizedLower = normalized.toLowerCase();
+    
+    // 1. 绝对禁止：根目录
+    if (parsed.root === normalized || normalizedLower.match(/^[a-z]:\\?$/i) || normalized === '/') {
+        return { 
+            isSafe: false, 
+            warning: '不能在磁盘根目录创建项目，请选择一个子目录' 
+        };
+    }
+    
+    // 2. 绝对禁止：路径深度太浅（根目录下一级）
+    const pathParts = normalized.split(path.sep).filter(p => p);
+    if (pathParts.length < 2) {
+        return { 
+            isSafe: false, 
+            warning: '路径层级过浅，请至少选择两级目录（如 D:\\Projects\\my-app）' 
+        };
+    }
+    
+    // 3. 检查是否在用户目录内（推荐的安全位置）
+    const userHome = process.env.USERPROFILE || process.env.HOME;
+    if (userHome && normalized.toLowerCase().startsWith(userHome.toLowerCase())) {
+        return { isSafe: true }; // 用户目录内，安全
+    }
+    
+    // 4. 检查是否包含危险关键词
+    const dangerousKeywords = [
+        'windows', 'system32', 'syswow64', 'program files', 'programdata',
+        'bin', 'sbin', 'usr', 'etc', 'var', 'sys', 'proc', 'boot', 'lib', 'opt'
+    ];
+    
+    for (const keyword of dangerousKeywords) {
+        if (normalizedLower.includes(path.sep + keyword + path.sep) || 
+            normalizedLower.includes(path.sep + keyword)) {
+            return { 
+                isSafe: false, 
+                warning: `路径包含系统目录关键词 "${keyword}"，可能不安全` 
+            };
+        }
+    }
+    
+    // 5. 检查写权限
+    try {
+        // 尝试访问父目录以检查权限
+        const parentDir = path.dirname(normalized);
+        if (fs.existsSync(parentDir)) {
+            fs.accessSync(parentDir, fs.constants.W_OK);
+        }
+    } catch (error) {
+        return { 
+            isSafe: false, 
+            warning: '对该路径没有写入权限，请选择其他目录' 
+        };
+    }
+    
+    // 6. 非用户目录的其他位置，需要用户确认
+    return { 
+        isSafe: true, 
+        needsConfirmation: true,
+        warning: `即将在 ${normalized} 创建项目目录\n建议使用用户目录以确保安全（如 ${userHome || 'C:\\Users\\YourName'}\\Projects）`
+    };
+}
+
+/**
  * 获取用户配置的项目路径
  */
 function getProjectPath(): string {
@@ -25,6 +99,14 @@ function getProjectPath(): string {
         vscode.window.showErrorMessage('项目路径未配置，请先在设置中配置 ai.projectPath。')
         throw new Error('项目路径未配置')
     }
+    
+    // 检查路径安全性
+    const { isSafe, warning } = checkPathSafety(projectPath);
+    if (!isSafe) {
+        vscode.window.showErrorMessage(`项目路径不安全：${warning}\n请在设置中更改 ai.projectPath。`);
+        throw new Error(`项目路径不安全：${warning}`);
+    }
+    
     return projectPath
 }
 
@@ -88,9 +170,21 @@ function checkAndPromptCreateStructure(): void {
             }
             
             if (needsCreation.length > 0) {
-                const message = `检测到以下目录不存在，是否创建？\n${needsCreation.join('\n')}`;
+                // 检查路径安全性和是否需要额外确认
+                const { isSafe, warning, needsConfirmation } = checkPathSafety(projectPath);
+                
+                if (!isSafe) {
+                    vscode.window.showErrorMessage(`无法创建项目结构：${warning}`);
+                    return;
+                }
+                
+                let confirmMessage = `检测到以下目录不存在，是否创建？\n${needsCreation.join('\n')}`;
+                if (needsConfirmation && warning) {
+                    confirmMessage += `\n\n⚠️ ${warning}`;
+                }
+                
                 const answer = await vscode.window.showInformationMessage(
-                    message,
+                    confirmMessage,
                     { modal: true },
                     '创建'
                 );
