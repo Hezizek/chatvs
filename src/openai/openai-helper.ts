@@ -617,9 +617,9 @@ async function getGenerateCodePromptForPython(fileContent: string, lastGranulari
         const pathParts = relativePath.split(path.sep);
         
         if (pathParts.length > 0) {
-            // 实际数据结构文件存放在 .codes 目录下，而不是 .ai 目录
+            // 实际数据结构文件存放在 codes 目录下
             const projectName = pathParts[0];
-            const codeProjectRoot = path.join(aiPath, '.codes', projectName);
+            const codeProjectRoot = path.join(getCodesPath(), projectName);
             const { getActualDataStructureContent } = await import('../tools/actual-datastructure-generator.js');
             actualDataStructureCode = getActualDataStructureContent(codeProjectRoot, 'python');
             

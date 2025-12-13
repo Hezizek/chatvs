@@ -17,38 +17,30 @@ export const registerCreateSetting = (context: vscode.ExtensionContext) => {
 let hasCheckedStructure = false;
 
 /**
- * 获取项目根路径
+ * 获取用户配置的项目路径
  */
 function getProjectPath(): string {
     const projectPath = vscode.workspace.getConfiguration('ai').get<string>('projectPath')
-    if (projectPath) {
-        return projectPath
+    if (!projectPath) {
+        vscode.window.showErrorMessage('项目路径未配置，请先在设置中配置 ai.projectPath。')
+        throw new Error('项目路径未配置')
     }
-    
-    // 回退到旧配置 ai.path
-    const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path')
-    if (aiPath) {
-        return aiPath
-    }
-    
-    vscode.window.showErrorMessage('项目路径未配置，请先在设置中配置 ai.projectPath。')
-    throw new Error('项目路径未配置')
+    return projectPath
 }
 
 /**
- * 获取伪代码路径（原 aiPath）
- * 现在返回 projectPath/pseudocodes
+ * 获取伪代码路径
+ * 返回 projectPath/pseudocodes
  */
 export function getAiPath(): string {
     const projectPath = getProjectPath()
-    const pseudocodesPath = path.join(projectPath, 'pseudocodes')
     
     // 首次调用时检查目录是否存在
     if (!hasCheckedStructure) {
         checkAndPromptCreateStructure();
     }
     
-    return pseudocodesPath
+    return path.join(projectPath, 'pseudocodes')
 }
 
 /**
@@ -57,14 +49,13 @@ export function getAiPath(): string {
  */
 export function getCodesPath(): string {
     const projectPath = getProjectPath()
-    const codesPath = path.join(projectPath, 'codes')
     
     // 首次调用时检查目录是否存在
     if (!hasCheckedStructure) {
         checkAndPromptCreateStructure();
     }
     
-    return codesPath
+    return path.join(projectPath, 'codes')
 }
 
 /**
@@ -101,8 +92,7 @@ function checkAndPromptCreateStructure(): void {
                 const answer = await vscode.window.showInformationMessage(
                     message,
                     { modal: true },
-                    '创建',
-                    '取消'
+                    '创建'
                 );
                 
                 if (answer === '创建') {
