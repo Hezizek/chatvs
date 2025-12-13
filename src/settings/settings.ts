@@ -1,5 +1,7 @@
 import * as vscode from "vscode"
 import * as dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as path from 'path';
 
 dotenv.config();
 
@@ -11,13 +13,170 @@ export const registerCreateSetting = (context: vscode.ExtensionContext) => {
     )
 }
 
-export function getAiPath(): string {
-    const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path')
-    if (!aiPath) {
-        vscode.window.showErrorMessage('AI 路径未配置，请先在设置中配置 AI 路径。')
-        throw new Error('AI 路径未配置')
+// 用于记录是否已经检查过目录结构
+let hasCheckedStructure = false;
+
+/**
+ * 获取项目根路径
+ */
+function getProjectPath(): string {
+    const projectPath = vscode.workspace.getConfiguration('ai').get<string>('projectPath')
+    if (projectPath) {
+        return projectPath
     }
-    return aiPath
+    
+    // 回退到旧配置 ai.path
+    const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path')
+    if (aiPath) {
+        return aiPath
+    }
+    
+    vscode.window.showErrorMessage('项目路径未配置，请先在设置中配置 ai.projectPath。')
+    throw new Error('项目路径未配置')
+}
+
+/**
+ * 获取伪代码路径（原 aiPath）
+ * 现在返回 projectPath/pseudocodes
+ */
+export function getAiPath(): string {
+    const projectPath = getProjectPath()
+    const pseudocodesPath = path.join(projectPath, 'pseudocodes')
+    
+    // 首次调用时检查目录是否存在
+    if (!hasCheckedStructure) {
+        checkAndPromptCreateStructure();
+    }
+    
+    return pseudocodesPath
+}
+
+/**
+ * 获取实际代码路径
+ * 返回 projectPath/codes
+ */
+export function getCodesPath(): string {
+    const projectPath = getProjectPath()
+    const codesPath = path.join(projectPath, 'codes')
+    
+    // 首次调用时检查目录是否存在
+    if (!hasCheckedStructure) {
+        checkAndPromptCreateStructure();
+    }
+    
+    return codesPath
+}
+
+/**
+ * 检查并提示创建目录结构（异步执行，不阻塞）
+ */
+function checkAndPromptCreateStructure(): void {
+    if (hasCheckedStructure) {
+        return;
+    }
+    
+    hasCheckedStructure = true;
+    
+    // 异步执行检查和创建
+    (async () => {
+        try {
+            const projectPath = getProjectPath();
+            const pseudocodesPath = path.join(projectPath, 'pseudocodes');
+            const codesPath = path.join(projectPath, 'codes');
+            
+            const needsCreation: string[] = [];
+            
+            if (!fs.existsSync(projectPath)) {
+                needsCreation.push(`项目根目录: ${projectPath}`);
+            }
+            if (!fs.existsSync(pseudocodesPath)) {
+                needsCreation.push(`伪代码目录: pseudocodes`);
+            }
+            if (!fs.existsSync(codesPath)) {
+                needsCreation.push(`实际代码目录: codes`);
+            }
+            
+            if (needsCreation.length > 0) {
+                const message = `检测到以下目录不存在，是否创建？\n${needsCreation.join('\n')}`;
+                const answer = await vscode.window.showInformationMessage(
+                    message,
+                    { modal: true },
+                    '创建',
+                    '取消'
+                );
+                
+                if (answer === '创建') {
+                    // 创建目录
+                    if (!fs.existsSync(projectPath)) {
+                        fs.mkdirSync(projectPath, { recursive: true });
+                    }
+                    if (!fs.existsSync(pseudocodesPath)) {
+                        fs.mkdirSync(pseudocodesPath, { recursive: true });
+                    }
+                    if (!fs.existsSync(codesPath)) {
+                        fs.mkdirSync(codesPath, { recursive: true });
+                    }
+                    
+                    vscode.window.showInformationMessage('项目结构已创建成功！');
+                } else {
+                    vscode.window.showWarningMessage('未创建目录结构，某些功能可能无法正常工作。');
+                }
+            }
+        } catch (error) {
+            console.error('检查目录结构时出错:', error);
+        }
+    })();
+}
+
+/**
+ * 确保项目文件夹结构存在 (codes 和 pseudocodes)
+ * 如果不存在则创建，并询问用户
+ */
+export async function ensureProjectStructure(): Promise<boolean> {
+    const projectPath = getProjectPath()
+    const pseudocodesPath = getAiPath()
+    const codesPath = getCodesPath()
+    
+    const needsCreation: string[] = []
+    
+    if (!fs.existsSync(projectPath)) {
+        needsCreation.push(`项目根目录: ${projectPath}`)
+    }
+    if (!fs.existsSync(pseudocodesPath)) {
+        needsCreation.push(`伪代码目录: ${pseudocodesPath}`)
+    }
+    if (!fs.existsSync(codesPath)) {
+        needsCreation.push(`实际代码目录: ${codesPath}`)
+    }
+    
+    if (needsCreation.length > 0) {
+        const message = `以下目录不存在，是否创建？\n${needsCreation.join('\n')}`
+        const answer = await vscode.window.showInformationMessage(
+            message,
+            { modal: true },
+            '创建',
+            '取消'
+        )
+        
+        if (answer !== '创建') {
+            return false
+        }
+        
+        // 创建目录
+        if (!fs.existsSync(projectPath)) {
+            fs.mkdirSync(projectPath, { recursive: true })
+        }
+        if (!fs.existsSync(pseudocodesPath)) {
+            fs.mkdirSync(pseudocodesPath, { recursive: true })
+        }
+        if (!fs.existsSync(codesPath)) {
+            fs.mkdirSync(codesPath, { recursive: true })
+        }
+        
+        vscode.window.showInformationMessage('项目结构已创建成功！')
+    }
+    
+    return true
 }
 
 /**
@@ -29,7 +188,7 @@ export async function getAzureOpenAIConfig(): Promise<{ endpoint: string, apiKey
     const config = vscode.workspace.getConfiguration('codeRefinement');
     let endpoint = process.env.AZURE_OPENAI_ENDPOINT || config.get<string>('azureOpenAI.endpoint');
     let apiKey = process.env.AZURE_OPENAI_API_KEY || config.get<string>('azureOpenAI.apiKey');
-    
+     
     if (!endpoint || !apiKey) {
         const inputKey = await vscode.window.showInputBox({
             prompt: '请输入你的 Azure OpenAI API Key',

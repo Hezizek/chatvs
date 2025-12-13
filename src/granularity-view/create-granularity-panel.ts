@@ -324,7 +324,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
             const projectHandlerRoot = targetRecord.projectHandler.rootPath;
             const projectName = path.basename(projectHandlerRoot);
-            const codeProjectRoot = path.join(aiPath, '.codes', projectName);
+            const codeProjectRoot = path.join(settings.getCodesPath(), projectName);
 
             const rootPath = targetRecord.getRootPath()
             const relativePath = path.relative(aiPath, rootPath)

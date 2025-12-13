@@ -57,6 +57,12 @@ export async function createModule(
 
 export async function createProject(label: string) {
 
+    // 确保项目结构存在（codes 和 pseudocodes 文件夹）
+    const structureReady = await settings.ensureProjectStructure();
+    if (!structureReady) {
+        return; // 用户取消了创建
+    }
+
     const dataProvider = DesignmentTreeDataProvider.getInstance()
     if (dataProvider.localNodeTree.find(child => child.label === label)) {
         vscode.window.showErrorMessage(`已存在同名项目根节点 ${label}，请更换项目名称。`)
