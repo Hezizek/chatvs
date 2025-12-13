@@ -312,10 +312,11 @@ export async function getJson2PsePrompt(fileContent: string, currentModulePath?:
 
     const projectName = currentModulePath ? path.basename(path.dirname(currentModulePath)) : '';
 
-    // 临时措施，从 fileContent 中移除所有项目名前缀
+    // 临时措施，从 fileContent和commonDSContent 中移除所有项目名前缀
     if (projectName) {
         const regex = new RegExp(`"${projectName}\\.`,"g");
         fileContent = fileContent.replace(regex, '"');
+        commonDSContent = commonDSContent.replace(regex, '"');
     }
 
     let userPrompt = `请根据以下JSON设计文档生成详细的伪代码：\n\n${fileContent}\n\n`;
