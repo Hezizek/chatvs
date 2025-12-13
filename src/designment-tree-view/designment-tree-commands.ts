@@ -5,13 +5,18 @@ import { DesignmentTreeDataProvider, DirectoryNode, NodeType, ProjectState } fro
 import { doModuleDivision, getCommonDS, getLeafModules } from './designment-tree-utils'
 import { disposeCurrentRecordAndCloseWebview, openGranularityWebview } from '../granularity-view/create-granularity-panel'
 import { extractProject } from '../tools/project-extractor';
+import * as settings from '../settings/settings';
 
 
 export async function createTreeView(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.commands.registerCommand("CodeToolBox.openChatGPTView", async () => {
-            openChatGPTView(context)
+            const structureReady = await settings.ensureProjectStructure();
+            
+            if (structureReady) {
+                openChatGPTView(context)
+            }
         })
     )
 }
