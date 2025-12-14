@@ -51,7 +51,7 @@ export async function callOpenAIForJSON<T = any>(
             let response;
             if (maxTokens < 0) {
                 response = await client.chat.completions.create({
-                    model: 'gpt-35-turbo',
+                    model: 'gpt-4',
                     messages: [
                         {
                             role: 'system',
@@ -68,7 +68,7 @@ export async function callOpenAIForJSON<T = any>(
             }
             else{
                 response = await client.chat.completions.create({
-                    model: 'gpt-35-turbo',
+                    model: 'gpt-4',
                     messages: [
                         {
                             role: 'system',
@@ -156,11 +156,7 @@ export async function callOpenAIForJSON<T = any>(
  */
 async function getDependencyModulesCode(currentModulePath: string, codeType: 'pseudocode' | 'actual' = 'pseudocode'): Promise<string> {
     try {
-        const aiPath = vscode.workspace.getConfiguration('ai').get<string>('path');
-        if (!aiPath) {
-            console.log('[getDependencyModulesCode] AI路径未配置');
-            return '';
-        }
+        const aiPath = getAiPath();
 
         // 使用 path.relative 和 path.dirname 来安全地获取项目根路径
         // currentModulePath 是模块目录，需要向上找到项目根目录

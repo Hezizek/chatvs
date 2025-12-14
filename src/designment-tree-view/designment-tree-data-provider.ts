@@ -277,6 +277,8 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
     // Update the view after changing node data.
     refresh(fileNode: DesignmentTreeNode | DesignmentTreeNode[] | undefined | null): void {
         this._onDidChangeTreeData.fire(fileNode)
+        // 每次刷新时都持久化树结构，确保数据及时保存
+        persistTree(this.localNodeTree)
     }
 
     
