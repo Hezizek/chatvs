@@ -52,6 +52,7 @@ export async function doModuleDivision(
     const aiPath = settings.getAiPath()
     const projectRootPath = getProjectRootPath(parent)
     const modulesPath = path.join(projectRootPath, 'modules.json')
+    const projectName = path.basename(projectRootPath)
     const ongoingLeafModulesPath = path.join(projectRootPath, 'ongoing_leaf_modules.json')
     const currentContentPath = parent.getContentFilePath()
     const isFirstLevel = parent.type === NodeType.Project
@@ -74,7 +75,6 @@ export async function doModuleDivision(
 
         prompt = await openaiHelper.getModuleDivisionPrompt1(currentContentPath, context)
         
-        const projectName = path.basename(path.dirname(currentContentPath))
         expectedPrefix = projectName + '.'
     } else {
 
@@ -83,7 +83,6 @@ export async function doModuleDivision(
         
         expectedPrefix = currentModuleName + '.'
 
-        const projectName = currentModuleName.split('.')[0]
         const requirementsPath = path.join(aiPath, projectName, 'content.txt')
         
         prompt = await openaiHelper.getModuleDivisionPrompt2(ongoingLeafModulesPath, requirementsPath, currentModuleName, context)
@@ -172,15 +171,18 @@ export async function doModuleDivision(
             updateDependencies(allModules)
             // 预写入受影响的 content.txt
             affectedModules.forEach((mod, modName) => {
-                const modRelPath = modName.split('.').join(path.sep)
-                const modContentPath = path.join(aiPath, modRelPath, 'content.txt')
-                
-                if (fs.existsSync(modContentPath)) {
-                    stageJsonWrite(modContentPath, mod);
+                if (mod.path) {
+                    const modContentPath = path.join(aiPath, mod.path, 'content.txt')
+                    if (fs.existsSync(modContentPath)) {
+                        stageJsonWrite(modContentPath, mod);
+                    }
+                } else {
+                    console.warn(`[ModuleDivision] 模块 ${modName} 缺少 path 属性，跳过更新。`)
                 }
             })
         }
         result.forEach((module: any) => {
+            module.path = path.join(projectName, module.name.replace(/\./g, path.sep));
             allModules.push(module)
             ongoingLeafModules.push(module)
 
@@ -279,15 +281,18 @@ export async function getLeafModules(
 
         // Currently, we assume that the topology sequence is fixed after designment stage.
         const sortedResult = topoSortLeafModules(result)
+        const aiPath = settings.getAiPath()
+        const projectName = path.basename(projectPath)
 
         sortedResult.forEach((item: any, index: any) => {
             item.status = index === 0 ? 'ongoing' : 'pending'
 
+            item.path = path.join(projectName, item.module_name.replace(/\./g, path.sep));
+
             // Write the designment information to each leaf module.
-            const aiPath = settings.getAiPath()
             const filePath = path.join(
                 aiPath,
-                item.module_name.replace(/\./g, path.sep),
+                item.path,
                 'designment_info.txt'
             )
             

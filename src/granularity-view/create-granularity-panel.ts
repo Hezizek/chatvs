@@ -9,10 +9,9 @@ import { GranularityViewProvider } from './granularity-view-provider'
 import { GranularityNode, GranularityRecord } from './granularity-record'
 import { getSrcFileSuffix } from '../tools/lang-util'
 import { cleanLLMResponse, getHumanJsonPath, LineData } from './granularity-view-utils'
-import { initialProject } from '../tools/project-initializer'
+import { initialProject, removeProject } from '../tools/project-initializer'
 import { writeModule } from '../tools/module-writer'
-import { updateRootLaunchConfig } from '../tools/launch-config-updater'
-import { set } from 'zod'
+import { updateRootLaunchConfig, removeRootLaunchConfig } from '../tools/launch-config-updater'
 import { encoding_for_model } from "@dqbd/tiktoken";
 
 
@@ -280,38 +279,99 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 		vscode.commands.registerCommand('refinement.rollback', async () => {
             
             assert(currentRecord, 'No usable record for granularity panel.')
+            const targetRecord: GranularityRecord = currentRecord
 
-            const currentIndex = currentRecord.getCurrentIndex()
+            const currentIndex = targetRecord.getCurrentIndex()
 			if (currentIndex < 0) {
 				vscode.window.showWarningMessage('您还没有选择要回退到的伪代码记录。')
 				return
 			}
+            
+            const rootPath = targetRecord.getRootPath()
+            const projectHandlerRoot = targetRecord.projectHandler.rootPath
+            const projectName = path.basename(projectHandlerRoot)
+            const aiPath = settings.getAiPath()
+            const relativePath = path.relative(aiPath, rootPath)
+            
+            const leafModulesPath = path.join(projectHandlerRoot, 'leaf_modules.json')
+            let leafModules: any[] = []
+            if (fs.existsSync(leafModulesPath)) {
+                try {
+                    leafModules = JSON.parse(fs.readFileSync(leafModulesPath, 'utf8'))
+                } catch (e) {
+                    console.error('Error reading leaf_modules.json:', e)
+                }
+            }
 
-			currentRecord.backTo(currentIndex, false)
-            const currentNode = currentRecord.getCurrentNode()
+            const seqIndex = leafModules.findIndex((mod: any) => mod.path === relativePath)
+            const isFirstModule = (seqIndex === 0)
+            const isLastModule = (seqIndex !== -1 && seqIndex === leafModules.length - 1)
+            // 读取当前的 node.json，检查即将被移除的节点
+            const nodeJsonPath = path.join(rootPath, 'node.json')
+            if (fs.existsSync(nodeJsonPath)) {
+                try {
+                    const allNodes: GranularityNode[] = JSON.parse(fs.readFileSync(nodeJsonPath, 'utf8'))
+                    // index 之后的节点都会被移除（currentIndex 是我们要回退到的目标）
+                    const nodesToRemove = allNodes.slice(currentIndex + 1)
+                    
+                    // 查找是否有 "code" 类型的节点被移除
+                    const codeNode = nodesToRemove.find(n => n.nodeType === 'code')
+                    
+                    if (codeNode) {
+                        // 尝试从描述中提取语言，例如 "实际代码（python）"
+                        const match = codeNode.description.match(/实际代码（(.+)）/)
+                        const language = match ? match[1] : 'python' // 默认回退值
+
+                        // 1. 如果是第一个模块，且回退掉了代码生成步骤 -> 删除整个代码项目
+                        if (isFirstModule) {
+                            const codeProjectRoot = path.join(settings.getCodesPath(), projectName)
+                            await removeProject(codeProjectRoot)
+                            vscode.window.showInformationMessage(`检测到首模块代码生成回退，已重置代码项目目录。`)
+                        }
+
+                        // 2. 如果是最后一个模块，且回退掉了代码生成步骤 -> 删除 Launch 配置
+                        if (isLastModule) {
+                            const projectPath = settings.getProjectPath()
+                            await removeRootLaunchConfig(projectPath, projectName, language)
+                            vscode.window.showInformationMessage(`检测到末模块代码生成回退，已移除相关调试配置。`)
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error during rollback cleanup checks:', e)
+                }
+            }
+
+			targetRecord.backTo(currentIndex, false)
+            const currentNode = targetRecord.getCurrentNode()
             const description = currentNode ? currentNode.description : '未知伪代码'
 
             vscode.window.showInformationMessage(`当前模块已回退至`+description+`。`)
 
-            const aiPath = settings.getAiPath()
-            const rootPath = currentRecord.getRootPath()
             const projectHandler = currentRecord.projectHandler
                 
             try {
                 const relativePath = path.relative(aiPath, rootPath)
-                const currentModuleName = relativePath.split(path.sep).join('.')
-                const sequence = projectHandler.getLeafModuleSequence()
-                const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
+                const projectRoot = projectHandler.rootPath
+                const leafModulesPath = path.join(projectRoot, 'leaf_modules.json')
+                let leafModules: any[] = []
+                if (fs.existsSync(leafModulesPath)) {
+                    leafModules = JSON.parse(fs.readFileSync(leafModulesPath, 'utf8'))
+                }
 
-                if (seqIndex >= 0 && seqIndex < sequence.length - 1) {
+                const seqIndex = leafModules.findIndex((mod: any) => mod.path === relativePath)
 
-                    const laterModules = sequence.slice(seqIndex + 1)
-                    for (const moduleName of laterModules) {
-                        const moduleFullPath = path.join(aiPath, moduleName.relativePath.split('.').join(path.sep))
-                        const tempRecord = new GranularityRecord(moduleFullPath)
-                                        
-                        tempRecord.backTo(0, false)
-                        tempRecord.dispose()
+                if (seqIndex >= 0 && seqIndex < leafModules.length - 1) {
+
+                    const laterModules = leafModules.slice(seqIndex + 1)
+                    for (const module of laterModules) {
+                        // 使用 module.path 构建路径
+                        if (module.path) {
+                            const moduleFullPath = path.join(aiPath, module.path)
+                            const tempRecord = new GranularityRecord(moduleFullPath)
+                                            
+                            tempRecord.backTo(0, false)
+                            tempRecord.dispose()
+                        }
                     }
                 }
 
@@ -346,11 +406,16 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
             const rootPath = targetRecord.getRootPath()
             const relativePath = path.relative(aiPath, rootPath)
-            const currentModuleName = relativePath.split(path.sep).join('.')
-            const sequence = targetRecord.projectHandler.getLeafModuleSequence()
-            const seqIndex = sequence.findIndex(mod => mod.relativePath === currentModuleName)
+            
+            const leafModulesPath = path.join(projectHandlerRoot, 'leaf_modules.json')
+            let leafModules: any[] = []
+            if (fs.existsSync(leafModulesPath)) {
+                leafModules = JSON.parse(fs.readFileSync(leafModulesPath, 'utf8'))
+            }
+            
+            const seqIndex = leafModules.findIndex((mod: any) => mod.path === relativePath)
             const isFirstModule = (seqIndex === 0)
-            const isLastModule = (seqIndex === sequence.length - 1)
+            const isLastModule = (seqIndex === leafModules.length - 1)
             
 
 			vscode.window.showInformationMessage(`正在生成 ${language} 代码...`)
@@ -439,13 +504,34 @@ export function openGranularityWebview(rootPath: string) {
 
         // Inform the webview to update UI.
         assert(currentRecord, 'No usable record for granularity panel.')
-        const sequence = currentRecord.projectHandler.getLeafModuleSequence()
-        const currentModuleName = path.relative(settings.getAiPath(), rootPath).split(path.sep).join('.')
-
-        // 得到要打开模块的状态：completed / ongoing / pending
-        const targetMod = sequence.find(mod => mod.relativePath === currentModuleName)      
+        const aiPath = settings.getAiPath()
+        const relativePath = path.relative(aiPath, rootPath)
+        
+        const projectRoot = currentRecord.projectHandler.rootPath
+        const leafModulesPath = path.join(projectRoot, 'leaf_modules.json')
+        
+        let leafModules: any[] = []
+        let targetMod: any = null
+        
+        if (fs.existsSync(leafModulesPath)) {
+            leafModules = JSON.parse(fs.readFileSync(leafModulesPath, 'utf8'))
+            targetMod = leafModules.find((mod: any) => mod.path === relativePath)
+        } else {
+             // Fallback: Check modules.json if leaf_modules.json is missing or mod not found
+            const modulesPath = path.join(projectRoot, 'modules.json')
+            if (fs.existsSync(modulesPath)) {
+                const modules = JSON.parse(fs.readFileSync(modulesPath, 'utf8'))
+                // Try to find in modules.json
+                 const mod = modules.find((m: any) => m.path === relativePath)
+                 if (mod) targetMod = mod
+            }
+        }
+        
         assert(targetMod, `无法在模块列表中找到模块: ${path.basename(rootPath)}`)
-        const status = targetMod.status
+        
+        const currentModuleName = targetMod.name || targetMod.module_name
+        const status = targetMod.status || 'pending'
+        const moduleSequence = leafModules.map((mod: any) => mod.name || mod.module_name)
 
         // 获取当前粒度（根据活动节点的描述判断）
         const activeNode = nodes.find(n => n.isActive)
@@ -456,7 +542,7 @@ export function openGranularityWebview(rootPath: string) {
             type: 'updateView', 
             data: {
                 nodes: nodes,
-                moduleSequence: sequence.map(mod => mod.relativePath),
+                moduleSequence: moduleSequence,
                 currentModule: currentModuleName,
                 moduleStatus: status,
                 currentGranularity: currentGranularity
