@@ -3,6 +3,7 @@ import * as vscode from 'vscode'
 import * as path from 'path'
 import * as fs from 'fs'
 import { buildTreeFromSerializedForm, persistenceTreeNode, persistTree } from './designment-tree-persistence'
+import { getLangIconPath } from '../tools/lang-util'
 
 export enum NodeType {
     Project,
@@ -205,7 +206,7 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
         return element.isExtendable() ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
     }
 
-    private getIconPath(element: DesignmentTreeNode): vscode.ThemeIcon {
+    private getIconPath(element: DesignmentTreeNode): vscode.ThemeIcon | vscode.Uri {
 
         if (element instanceof DirectoryNode && (element.type == NodeType.Project || element.type == NodeType.Module) && element.banned) {
             // Show spinning circle.
@@ -223,9 +224,10 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
             case NodeType.DataStructure:    
                 return new vscode.ThemeIcon('database', new vscode.ThemeColor('charts.orange'))
             case NodeType.NormalDirectory:
+                return new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.white'))
             case NodeType.NormalFile:
-                // TODO
-                return new vscode.ThemeIcon('circle', new vscode.ThemeColor('charts.white'))
+                const langIconPath = getLangIconPath(element.absolutePath)
+                return langIconPath ? vscode.Uri.file(langIconPath) : new vscode.ThemeIcon('list-flat', new vscode.ThemeColor('charts.white'))
             default:
                 throw new Error(`Unexpected node type for icon path retrieval: ${NodeType[element.type]}`)
         }

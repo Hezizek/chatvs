@@ -380,19 +380,36 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                             NodeType.NormalDirectory
                         )
 
+
+                        const node3 = new DirectoryNode(
+                            'node3',
+                            'D:/Directory/code/IDE/ide_demo_repo/pseudocodes/Calculator/DataStructures/ListNode',
+                            NodeType.NormalDirectory
+                        )
+
+                        const node4 = new FileNode(
+                            'node4',
+                            'D:/Directory/courses/机器学习（助教）/实验作业5/Task3/utils.py/ListNode.py',
+                            NodeType.NormalFile
+                        )
+
                         const node2 = new FileNode(
                             'node2',
-                            'D:/Directory/code/IDE/ide_demo_repo/pseudocodes/Calculator/content.txt',
+                            'D:/Directory/courses/机器学习（助教）/实验作业5/Task3/utils.py',
                             NodeType.NormalFile
                         )
 
                         // 设置父节点，也可以在构造函数的 parent 参数中直接传递，这里不演示了
                         node1.parent = dsNode
                         node2.parent = node1
+                        node3.parent = node1
+                        node4.parent = node3
 
                         // 添加子节点
                         dsNode.children.push(node1)
                         node1.children.push(node2)
+                        node1.children.push(node3)
+                        node3.children.push(node4)
 
                         // 刷新树视图
                         projectHandler.updateProjectTree()

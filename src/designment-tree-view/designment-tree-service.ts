@@ -66,7 +66,7 @@ export async function createProject(label: string) {
 
     const dataProvider = DesignmentTreeDataProvider.getInstance()
     if (dataProvider.localNodeTree.find(child => child.label === label)) {
-        vscode.window.showErrorMessage(`已存在同名项目根节点 ${label}，请更换项目名称。`)
+        vscode.window.showErrorMessage(`已存在同名项目 ${label}，请更换项目名称。`)
         return
     }
 

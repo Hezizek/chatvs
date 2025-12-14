@@ -1,7 +1,7 @@
 import assert from 'assert'
 import * as vscode from 'vscode'
 import * as designmentService from './designment-tree-service'
-import { DesignmentTreeDataProvider, DirectoryNode, NodeType, ProjectState } from './designment-tree-data-provider'
+import { DesignmentTreeDataProvider, DirectoryNode, NodeType } from './designment-tree-data-provider'
 import { doModuleDivision, getCommonDS, getLeafModules } from './designment-tree-utils'
 import { disposeCurrentRecordAndCloseWebview, openGranularityWebview } from '../granularity-view/create-granularity-panel'
 import * as settings from '../settings/settings';
