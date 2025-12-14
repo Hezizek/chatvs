@@ -35,3 +35,15 @@ function initPython(root: string) {
         fs.writeFileSync(envFile, 'PYTHONPATH=.', 'utf8');
     }
 }
+
+export async function removeProject(projectRoot: string) {
+    if (fs.existsSync(projectRoot)) {
+        try {
+            fs.rmSync(projectRoot, { recursive: true, force: true });
+            console.log(`[ProjectInitializer] 项目目录已删除: ${projectRoot}`);
+        } catch (error) {
+            console.error(`[ProjectInitializer] 删除项目目录失败: ${error}`);
+            throw error;
+        }
+    }
+}
