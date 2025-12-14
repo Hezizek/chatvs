@@ -78,13 +78,19 @@ export async function doModuleDivision(
 
         prompt = await openaiHelper.getModuleDivisionPrompt1(currentContentPath, context)
         
-        expectedPrefix = projectName + '.'
+        expectedPrefix = ''  // 不再要求项目名前缀
     } else {
 
         const rawModuleName = path.dirname(path.relative(aiPath, currentContentPath))
         const currentModuleName = rawModuleName.split(path.sep).join('.')
         
-        expectedPrefix = currentModuleName + '.'
+        // 从 currentModuleName 中移除项目名前缀，用于 expectedPrefix 验证
+        const prefixToRemove = projectName + '.';
+        const cleanModuleName = currentModuleName.startsWith(prefixToRemove)
+            ? currentModuleName.substring(prefixToRemove.length)
+            : currentModuleName;
+        
+        expectedPrefix = cleanModuleName + '.'
 
         const requirementsPath = path.join(aiPath, projectName, 'content.txt')
         
@@ -149,8 +155,16 @@ export async function doModuleDivision(
         // 如果不是第一层，现在划分成功了，才从叶子节点列表中移除“父模块”
         if (!isFirstLevel) {
             const rawModuleName = path.dirname(path.relative(aiPath, currentContentPath))
-            const currentModuleName = rawModuleName.split(path.sep).join('.')
-            ongoingLeafModules = ongoingLeafModules.filter((mod: any) => mod.name !== currentModuleName)
+            
+            // 使用 path 字段来匹配删除父模块
+            ongoingLeafModules = ongoingLeafModules.filter((mod: any) => {
+                const modPath = mod.path ? mod.path.replace(/[\/\\]/g, path.sep) : '';
+                return modPath !== rawModuleName;
+            })
+            
+            // 获取父模块的 name（不含项目名）- 从 path 中提取
+            const pathParts = rawModuleName.split(path.sep).filter(p => p && p !== projectName);
+            const parentModuleName = pathParts.join('.');
 
             // 更新依赖模块
             const newModuleNames = result.map((m: any) => m.name)
@@ -159,14 +173,16 @@ export async function doModuleDivision(
 
             const updateDependencies = (modulesList: any[]) => {
                 modulesList.forEach((mod: any) => {
-                    if (mod.dependencies && Array.isArray(mod.dependencies) && mod.dependencies.includes(currentModuleName)) {
-                        mod.dependencies = mod.dependencies.filter((d: string) => d !== currentModuleName)
+                    // 检查是否依赖被拆分的父模块
+                    if (mod.dependencies && Array.isArray(mod.dependencies) && 
+                        parentModuleName && mod.dependencies.includes(parentModuleName)) {
+                        mod.dependencies = mod.dependencies.filter((d: string) => d !== parentModuleName)
                         newModuleNames.forEach((newName: string) => {
                             if (!mod.dependencies.includes(newName)) {
                                 mod.dependencies.push(newName)
                             }
                         })
-                        affectedModules.set(mod.name, mod);
+                        affectedModules.set(mod.name || mod.module_name, mod);
                     }
                 })
             }

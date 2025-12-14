@@ -6,7 +6,7 @@ import { z } from 'zod';
  * 匹配 prompts/非碎片化模块划分.md 和 prompts/子模块划分.md 中定义的 JSON 格式
  * 
  * 必需字段：
- * - name: 模块的全限定名 (PascalCase)，如：a.b
+ * - name: 模块名称 (PascalCase)，不包含项目名前缀，如：Core、UIDriver、Core.Parser
  * - description: 用简练中文描述核心功能和行为
  * - dependencies: 依赖的模块名称列表，无依赖填空数组 []
  */
@@ -39,7 +39,7 @@ const InterfaceSchema = z.object({
  * 匹配 prompts/所有叶子节点生成提示词.md 中定义的 JSON 格式
  * 
  * 必需字段：
- * - module_name: 模块的全限定名 (PascalCase)，如：a.b.c
+ * - module_name: 模块名称 (PascalCase)，不包含项目名前缀，如：Core、UIDriver、Core.Parser
  * - dependencies: 依赖模块名列表
  * - local_variable: 模块内部持有的私有变量/状态列表
  * - interfaces: 函数接口定义数组（普通模块必须至少有一个接口）
