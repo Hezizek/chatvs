@@ -197,17 +197,15 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
 
         // 获取当前模块名称 - 使用相对路径
         const relativePath = path.relative(aiPath, currentModulePath);
-        // 将路径标准化为正斜杠格式，以便与 path 字段匹配
-        const normalizedPath = relativePath.split(path.sep).join('/');
 
-        // 找到当前模块 - 使用 path 字段匹配（需要统一路径分隔符）
+        // 找到当前模块 - 使用 path 字段匹配（统一为当前操作系统的路径分隔符）
         const currentModule = leafModules.find((mod: any) => {
-            // 将 mod.path 也标准化为正斜杠
-            const modPath = mod.path ? mod.path.replace(/\\/g, '/') : '';
-            return modPath === normalizedPath;
+            // 将 mod.path 标准化为当前操作系统的路径分隔符
+            const modPath = mod.path ? mod.path.replace(/[\/\\]/g, path.sep) : '';
+            return modPath === relativePath;
         });
         if (!currentModule || !currentModule.dependencies || currentModule.dependencies.length === 0) {
-            console.log('[getDependencyModulesCode] 当前模块没有依赖或找不到模块，路径:', normalizedPath);
+            console.log('[getDependencyModulesCode] 当前模块没有依赖或找不到模块，路径:', relativePath);
             return '';
         }
 
