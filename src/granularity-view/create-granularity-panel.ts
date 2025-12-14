@@ -336,7 +336,6 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
             const targetRecord = currentRecord
 
             const language = payload && payload.language ? payload.language : 'python'
-            const fileSuffix = getSrcFileSuffix(language) || '.txt'
             const aiPath = settings.getAiPath();
 
             const projectHandlerRoot = targetRecord.projectHandler.rootPath;
@@ -370,13 +369,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         console.log('[generateCode] 实际数据结构文件生成成功:', dsFilePath)
                         
                         // 刷新树视图以显示新生成的实际数据结构文件
-                        const { DesignmentTreeDataProvider } = await import('../designment-tree-view/designment-tree-data-provider.js')
-                        const treeProvider = DesignmentTreeDataProvider.getInstance()
-                        // 重新加载整个树以确保新文件被扫描到
-                        const { buildTreeFromSerializedForm } = await import('../designment-tree-view/designment-tree-persistence.js')
-                        treeProvider.localNodeTree = buildTreeFromSerializedForm()
-                        treeProvider.refresh(undefined)
-                        console.log('[generateCode] 已刷新树视图以显示实际数据结构文件')
+                        // TODO
 
                     } catch (dsError) {
                         console.error('[generateCode] 生成实际数据结构文件失败:', dsError)

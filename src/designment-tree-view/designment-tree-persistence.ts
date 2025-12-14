@@ -54,7 +54,7 @@ export async function persistTree(designmentTree: DesignmentTreeNode[]): Promise
     designmentTree.forEach(project => {
         if (project instanceof DirectoryNode && project.type === NodeType.Project) {
             const projectObjectSequence: persistenceTreeNode[] = []
-            serializeProject(project, projectObjectSequence)
+            preOrderTraverseProject(project, projectObjectSequence)
             projects.push(projectObjectSequence)
         } else {
             throw Error('Unexpected error: root node of a designment tree is not a project directory node')
@@ -65,11 +65,11 @@ export async function persistTree(designmentTree: DesignmentTreeNode[]): Promise
 }
 
 // Recursive function for serializing a project tree.
-function serializeProject(root: DesignmentTreeNode, sequence: persistenceTreeNode[]): void {
+function preOrderTraverseProject(root: DesignmentTreeNode, sequence: persistenceTreeNode[]): void {
     sequence.push(root.getObject())
     if (root instanceof DirectoryNode) {
         root.children.forEach(child => {
-            serializeProject(child, sequence)
+            preOrderTraverseProject(child, sequence)
         })
     }
 }
