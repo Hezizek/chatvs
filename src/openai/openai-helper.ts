@@ -51,7 +51,7 @@ export async function callOpenAIForJSON<T = any>(
             let response;
             if (maxTokens < 0) {
                 response = await client.chat.completions.create({
-                    model: 'gpt-35-turbo',
+                    model: 'gpt-4',
                     messages: [
                         {
                             role: 'system',
@@ -68,7 +68,7 @@ export async function callOpenAIForJSON<T = any>(
             }
             else{
                 response = await client.chat.completions.create({
-                    model: 'gpt-35-turbo',
+                    model: 'gpt-4',
                     messages: [
                         {
                             role: 'system',
