@@ -368,35 +368,22 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         vscode.window.showInformationMessage(`实际数据结构文件已生成: ${path.basename(dsFilePath)}`)
                         console.log('[generateCode] 实际数据结构文件生成成功:', dsFilePath)
                         
-                        // 刷新树视图以显示新生成的实际数据结构文件
-
-                        // ######################################################
-                        // Demo: 第一次生成代码后，左侧应该会出现下面流程创建的结构
+                        // 将生成的数据结构文件添加到树视图的 Common Data Structures 节点下
                         const dsNode = projectHandler.getDataStructureNode()
-
-                        const node1 = new DirectoryNode(
-                            'node1',
-                            'D:/Directory/code/IDE/ide_demo_repo/pseudocodes/Calculator/DataStructures',
-                            NodeType.NormalDirectory
+                        
+                        // 创建数据结构文件节点
+                        const dsFileNode = new FileNode(
+                            path.basename(dsFilePath),
+                            dsFilePath,
+                            NodeType.NormalFile,
+                            dsNode
                         )
-
-                        const node2 = new FileNode(
-                            'node2',
-                            'D:/Directory/code/IDE/ide_demo_repo/pseudocodes/Calculator/content.txt',
-                            NodeType.NormalFile
-                        )
-
-                        // 设置父节点，也可以在构造函数的 parent 参数中直接传递，这里不演示了
-                        node1.parent = dsNode
-                        node2.parent = node1
-
-                        // 添加子节点
-                        dsNode.children.push(node1)
-                        node1.children.push(node2)
-
+                        
+                        // 添加到 Common Data Structures 节点的子节点中
+                        dsNode.children.push(dsFileNode)
+                        
                         // 刷新树视图
                         projectHandler.updateProjectTree()
-                        // ######################################################
 
                     } catch (dsError) {
                         console.error('[generateCode] 生成实际数据结构文件失败:', dsError)

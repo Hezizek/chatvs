@@ -92,12 +92,8 @@ export async function generateActualDataStructure(
     // 7. 清理可能的 markdown 标记
     const cleanedCode = cleanLLMResponse(generatedCode);
     
-    // 8. 写入文件
+    // 8. 写入文件（仅写入 codes 下的项目根目录）
     fs.writeFileSync(dsFilePath, cleanedCode, 'utf8');
-    const aiPath = settings.getAiPath();
-    const projectDirName = path.basename(codeProjectRootPath);
-    const dsFileNameInAiPath = path.join(projectDirName, dsFileName);
-    fs.copyFileSync(dsFilePath, path.join(aiPath, dsFileNameInAiPath));
     DesignmentTreeDataProvider.getInstance().refresh(undefined);
     
     console.log(`[ActualDS] 实际数据结构文件已生成: ${dsFilePath}`);
