@@ -197,12 +197,13 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
 
         // 获取当前模块名称 - 使用相对路径
         const relativePath = path.relative(aiPath, currentModulePath);
-        const currentModuleName = relativePath.split(path.sep).join('.');
+        // 将路径标准化为正斜杠格式，以便与 path 字段匹配
+        const normalizedPath = relativePath.split(path.sep).join('/');
 
-        // 找到当前模块
-        const currentModule = leafModules.find((mod: any) => mod.module_name === currentModuleName);
+        // 找到当前模块 - 使用 path 字段匹配
+        const currentModule = leafModules.find((mod: any) => mod.path === normalizedPath);
         if (!currentModule || !currentModule.dependencies || currentModule.dependencies.length === 0) {
-            console.log('[getDependencyModulesCode] 当前模块没有依赖或找不到模块:', currentModuleName);
+            console.log('[getDependencyModulesCode] 当前模块没有依赖或找不到模块，路径:', normalizedPath);
             return '';
         }
 
@@ -216,7 +217,7 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
         for (const depModuleName of currentModule.dependencies) {
             if (codeType === 'actual') {
                 // 实际代码存放在 codes 目录下
-                const codeProjectRoot = path.join(getCodesPath(), projectName);
+                const codesPath = getCodesPath();
 
                 // 从 leaf_modules.json 中查找依赖模块的 path 字段
                 const depModule = leafModules.find((mod: any) => mod.module_name === depModuleName);
@@ -225,8 +226,8 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
                     continue;
                 }
 
-                // 使用 path 字段构建完整路径
-                const depCodePath = path.join(codeProjectRoot, depModule.path);
+                // path 字段已包含项目名，如 "sleep/CLIDriver"，直接使用
+                const depCodePath = path.join(codesPath, depModule.path);
 
                 // 尝试匹配各种语言的文件扩展名
                 const extensions = ['.py', '.java', '.c', '.cpp', '.js', '.ts'];
@@ -256,7 +257,8 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
                     continue;
                 }
 
-                const depModulePath = path.join(aiPath, projectName, depModule.path);
+                // path 字段已包含项目名，如 "sleep/CLIDriver"，直接使用
+                const depModulePath = path.join(aiPath, depModule.path);
                 const depNodeJsonPath = path.join(depModulePath, 'node.json');
 
                 if (fs.existsSync(depNodeJsonPath)) {
