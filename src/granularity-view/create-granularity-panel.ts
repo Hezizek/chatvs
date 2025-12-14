@@ -12,7 +12,6 @@ import { cleanLLMResponse, getHumanJsonPath, LineData } from './granularity-view
 import { initialProject } from '../tools/project-initializer'
 import { writeModule } from '../tools/module-writer'
 import { updateRootLaunchConfig } from '../tools/launch-config-updater'
-import { set } from 'zod'
 import { encoding_for_model } from "@dqbd/tiktoken";
 
 
@@ -374,8 +373,8 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         const { DesignmentTreeDataProvider } = await import('../designment-tree-view/designment-tree-data-provider.js')
                         const treeProvider = DesignmentTreeDataProvider.getInstance()
                         // 重新加载整个树以确保新文件被扫描到
-                        const { getlocalNodeTree } = await import('../designment-tree-view/designment-tree-persistence.js')
-                        treeProvider.localNodeTree = getlocalNodeTree()
+                        const { buildTreeFromSerializedForm } = await import('../designment-tree-view/designment-tree-persistence.js')
+                        treeProvider.localNodeTree = buildTreeFromSerializedForm()
                         treeProvider.refresh(undefined)
                         console.log('[generateCode] 已刷新树视图以显示实际数据结构文件')
 

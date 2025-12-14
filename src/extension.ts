@@ -5,6 +5,7 @@ import { remake } from './make-new/remake';
 import { confirm } from './confirm/confirm';
 // import { startLogging } from './log/log';
 import { registerWebviewForGranularityPanel, currentRecord } from "./granularity-view/create-granularity-panel";
+import { DesignmentTreeDataProvider } from './designment-tree-view/designment-tree-data-provider';
 import { createTreeView } from './designment-tree-view/designment-tree-commands';
 
 interface Project {
@@ -27,5 +28,9 @@ export async function activate(context: vscode.ExtensionContext) {
 export function deactivate() {
     if (currentRecord) {
         currentRecord.dispose()
+    }
+
+    if (DesignmentTreeDataProvider.hasInstance()) {
+        DesignmentTreeDataProvider.getInstance().dispose()
     }
 }
