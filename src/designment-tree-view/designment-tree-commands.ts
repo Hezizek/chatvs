@@ -4,7 +4,6 @@ import * as designmentService from './designment-tree-service'
 import { DesignmentTreeDataProvider, DirectoryNode, NodeType, ProjectState } from './designment-tree-data-provider'
 import { doModuleDivision, getCommonDS, getLeafModules } from './designment-tree-utils'
 import { disposeCurrentRecordAndCloseWebview, openGranularityWebview } from '../granularity-view/create-granularity-panel'
-import { extractProject } from '../tools/project-extractor';
 import * as settings from '../settings/settings';
 
 

@@ -2,7 +2,7 @@ import assert from 'assert'
 import * as vscode from 'vscode'
 import * as path from 'path'
 import * as fs from 'fs'
-import { getlocalNodeTree } from './designment-tree-persistence'
+import { buildTreeFromSerializedForm, persistenceTreeNode, persistTree } from './designment-tree-persistence'
 
 export enum NodeType {
     Project,
@@ -31,12 +31,14 @@ export abstract class DesignmentTreeNode {
     abstract isRefinable(): boolean
     abstract isExtendable(): boolean
     abstract isLeaf(): boolean
+    // Get the object form of this node for serialization, which can be directly used to construct the same node.
+    abstract getObject(): persistenceTreeNode
 
-    public getTypeString(): string {
+    getTypeString(): string {
         return NodeType[this.type]
     }
 
-    public getProjectState(): ProjectState {
+    getProjectState(): ProjectState {
         let iter: DesignmentTreeNode = this
         while (iter.parent) iter = iter.parent
         if (iter.type === NodeType.Project && iter instanceof DirectoryNode) {
@@ -50,7 +52,7 @@ export abstract class DesignmentTreeNode {
         }
     }
 
-    public switchBannedProjectState(): DirectoryNode {
+    switchBannedProjectState(): DirectoryNode {
         let iter: DesignmentTreeNode = this
         while (iter.parent) iter = iter.parent
         if (iter.type === NodeType.Project && iter instanceof DirectoryNode) {
@@ -71,6 +73,7 @@ export abstract class DesignmentTreeNode {
         }
     }
 }
+    
 
 export class FileNode extends DesignmentTreeNode {
     constructor(
@@ -96,6 +99,15 @@ export class FileNode extends DesignmentTreeNode {
 
     isLeaf(): boolean {
         return true
+    }
+
+    getObject(): persistenceTreeNode {
+        return {
+            label: this.label,
+            absolutePath: this.absolutePath,
+            type: this.getTypeString(),
+            childrenCount: 0
+        }
     }
 }
 
@@ -131,6 +143,15 @@ export class DirectoryNode extends DesignmentTreeNode {
         return this.children.length === 0
     }
 
+    getObject(): persistenceTreeNode {
+        return {
+            label: this.label,
+            absolutePath: this.absolutePath,
+            type: this.getTypeString(),
+            childrenCount: this.children.length
+        }
+    }
+
     // When the node is selected, whether the module creating button should be activated.
     allowModuleDivisionButtonWhenSelected(): boolean {
         const projectState = this.getProjectState()
@@ -145,14 +166,18 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
     private static instance: DesignmentTreeDataProvider | null = null
 
     private constructor() {
-        this.localNodeTree = getlocalNodeTree()
+        this.localNodeTree = buildTreeFromSerializedForm()
     }
 
-    public static getInstance(): DesignmentTreeDataProvider {
+    static getInstance(): DesignmentTreeDataProvider {
         if (!this.instance) {
             this.instance = new DesignmentTreeDataProvider()
         }   
         return this.instance
+    }
+
+    static hasInstance(): boolean {
+        return this.instance !== null
     }
 
     // Below are normal TreeDataProvider implementations.
@@ -234,6 +259,12 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
     // Update the view after changing node data.
     refresh(fileNode: DesignmentTreeNode | DesignmentTreeNode[] | undefined | null): void {
         this._onDidChangeTreeData.fire(fileNode)
+    }
+
+    
+    // Invoked when the extension is activated
+    dispose() {
+        persistTree(this.localNodeTree)
     }
 
     // Banned the whole project that the given node is in.
