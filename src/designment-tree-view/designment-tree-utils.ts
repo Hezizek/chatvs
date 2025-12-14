@@ -245,11 +245,12 @@ export async function getCommonDS(
             writeJsonAtomically(dsPath, result)
         }
         
-        const commonDSNode = new FileNode(
+        const commonDSNode = new DirectoryNode(
             'Common Data Structures',
-            dsPath,
+            dsPath, // TODO
             NodeType.DataStructure,
-            targetNode
+            targetNode,
+            dsPath
         )
 
         // 将数据结构节点添加到children中，使其在树中可见

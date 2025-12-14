@@ -8,7 +8,9 @@ export enum NodeType {
     Project,
     Module,
     Requirement,
-    DataStructure
+    DataStructure,
+    NormalDirectory,
+    NormalFile
 }
 
 // It's only for designment stage for now.
@@ -79,7 +81,7 @@ export class FileNode extends DesignmentTreeNode {
     constructor(
         label: string,
         absolutePath: string,
-        type: NodeType.Requirement | NodeType.DataStructure,
+        type: NodeType.Requirement | NodeType.NormalFile,
         parent?: DirectoryNode,
     ) {
         super(label, absolutePath, type, parent)
@@ -118,7 +120,7 @@ export class DirectoryNode extends DesignmentTreeNode {
     constructor(
         label: string,
         absolutePath: string,
-        type: NodeType.Project | NodeType.Module,
+        type: NodeType.Project | NodeType.Module | NodeType.DataStructure | NodeType.NormalDirectory,
         parent?: DirectoryNode,
         contentFilePath?: string,
         children?: DesignmentTreeNode[],
@@ -205,7 +207,7 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
 
     private getIconPath(element: DesignmentTreeNode): vscode.ThemeIcon {
 
-        if (element instanceof DirectoryNode && element.banned) {
+        if (element instanceof DirectoryNode && (element.type == NodeType.Project || element.type == NodeType.Module) && element.banned) {
             // Show spinning circle.
             return new vscode.ThemeIcon('loading~spin')
         }
@@ -220,6 +222,10 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
                 return new vscode.ThemeIcon('checklist', new vscode.ThemeColor('charts.yellow'))
             case NodeType.DataStructure:    
                 return new vscode.ThemeIcon('database', new vscode.ThemeColor('charts.orange'))
+            case NodeType.NormalDirectory:
+            case NodeType.NormalFile:
+                // TODO
+                return new vscode.ThemeIcon('circle', new vscode.ThemeColor('charts.white'))
             default:
                 throw new Error(`Unexpected node type for icon path retrieval: ${NodeType[element.type]}`)
         }
@@ -258,6 +264,12 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
         return Promise.resolve(
             element instanceof DirectoryNode ? element.children : []
         )
+    }
+
+
+    // Given the absolute path of project, then return the corresponding project node.
+    getProjectNodeByAbsolutePath(absolutePath: string): DirectoryNode | undefined {
+        return this.localNodeTree.find(node => node instanceof DirectoryNode && node.absolutePath === absolutePath) as DirectoryNode | undefined
     }
 
     // Update the view after changing node data.
