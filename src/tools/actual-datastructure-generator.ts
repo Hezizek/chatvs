@@ -53,50 +53,28 @@ export async function generateActualDataStructure(
     const prefixToRemove = projectName + '.';
     commonDSJsonContent = commonDSJsonContent.replace(new RegExp(`"${prefixToRemove}`, 'g'), '"');
     
-    // 3. 获取语言对应的文件后缀
-    const suffix = getSrcFileSuffix(language);
-    if (!suffix) {
-        throw new Error(`不支持的语言: ${language}`);
-    }
+    // 3. 根据语言选择不同的生成逻辑
+    let dsFilePath: string;
     
-    // 4. 构建输出文件路径（固定文件名，位于项目根目录）
-    const dsFileName = `data_structures${suffix}`;
-    const dsFilePath = path.join(codeProjectRootPath, dsFileName);
-    
-    // 5. 如果文件已存在，提示用户是否覆盖
-    if (fs.existsSync(dsFilePath)) {
-        const result = await vscode.window.showWarningMessage(
-            `数据结构文件 ${dsFileName} 已存在。是否覆盖？`,
-            { modal: true },
-            '覆盖',
-            '取消'
-        );
+    switch (language.toLowerCase()) {
+        case 'python':
+            dsFilePath = await generatePythonDataStructure(
+                commonDSJsonContent,
+                codeProjectRootPath,
+                language,
+                context
+            );
+            break;
         
-        if (result !== '覆盖') {
-            throw new Error('用户取消了数据结构文件的生成。');
-        }
+        default:
+            dsFilePath = await generateDefaultDataStructure(
+                commonDSJsonContent,
+                codeProjectRootPath,
+                language,
+                context
+            );
+            break;
     }
-    
-    // 6. 调用 OpenAI 生成实际数据结构代码
-    const prompt = await openaiHelper.getActualDataStructurePrompt(
-        commonDSJsonContent,
-        language,
-        context
-    );
-    
-    const generatedCode = await openaiHelper.callOpenAIForJSON(
-        prompt.system,
-        prompt.user
-    );
-    
-    // 7. 清理可能的 markdown 标记
-    const cleanedCode = cleanLLMResponse(generatedCode);
-    
-    // 8. 写入文件（仅写入 codes 下的项目根目录）
-    fs.writeFileSync(dsFilePath, cleanedCode, 'utf8');
-    DesignmentTreeDataProvider.getInstance().refresh(undefined);
-    
-    console.log(`[ActualDS] 实际数据结构文件已生成: ${dsFilePath}`);
     
     return dsFilePath;
 }
@@ -120,6 +98,118 @@ export function getActualDataStructureContent(projectRootPath: string, language:
         console.error(`读取实际数据结构文件失败: ${dsFilePath}`, error);
         return '';
     }
+}
+
+/**
+ * Python 特定的数据结构生成逻辑
+ */
+async function generatePythonDataStructure(
+    commonDSJsonContent: string,
+    codeProjectRootPath: string,
+    language: string,
+    context: vscode.ExtensionContext
+): Promise<string> {
+    // 获取 Python 对应的文件后缀
+    const suffix = getSrcFileSuffix(language);
+    if (!suffix) {
+        throw new Error(`不支持的语言: ${language}`);
+    }
+    
+    const dsFileName = `data_structures${suffix}`;
+    const dsFilePath = path.join(codeProjectRootPath, dsFileName);
+    
+    // 如果文件已存在，提示用户是否覆盖
+    if (fs.existsSync(dsFilePath)) {
+        const result = await vscode.window.showWarningMessage(
+            `数据结构文件 ${dsFileName} 已存在。是否覆盖？`,
+            { modal: true },
+            '覆盖',
+            '取消'
+        );
+        
+        if (result !== '覆盖') {
+            throw new Error('用户取消了数据结构文件的生成。');
+        }
+    }
+    
+    // 调用 OpenAI 生成实际数据结构代码（Python 专用 prompt）
+    const prompt = await openaiHelper.getActualDataStructurePrompt(
+        commonDSJsonContent,
+        language,
+        context
+    );
+    
+    const generatedCode = await openaiHelper.callOpenAIForJSON(
+        prompt.system,
+        prompt.user
+    );
+    
+    // 清理可能的 markdown 标记
+    const cleanedCode = cleanLLMResponse(generatedCode);
+    
+    // 写入文件（仅写入 codes 下的项目根目录）
+    fs.writeFileSync(dsFilePath, cleanedCode, 'utf8');
+    DesignmentTreeDataProvider.getInstance().refresh(undefined);
+    
+    console.log(`[ActualDS] Python 实际数据结构文件已生成: ${dsFilePath}`);
+    
+    return dsFilePath;
+}
+
+/**
+ * 默认的数据结构生成逻辑（用于其他语言）
+ */
+async function generateDefaultDataStructure(
+    commonDSJsonContent: string,
+    codeProjectRootPath: string,
+    language: string,
+    context: vscode.ExtensionContext
+): Promise<string> {
+    // 获取对应语言的文件后缀
+    const suffix = getSrcFileSuffix(language);
+    if (!suffix) {
+        throw new Error(`不支持的语言: ${language}`);
+    }
+    
+    const dsFileName = `data_structures${suffix}`;
+    const dsFilePath = path.join(codeProjectRootPath, dsFileName);
+    
+    // 如果文件已存在，提示用户是否覆盖
+    if (fs.existsSync(dsFilePath)) {
+        const result = await vscode.window.showWarningMessage(
+            `数据结构文件 ${dsFileName} 已存在。是否覆盖？`,
+            { modal: true },
+            '覆盖',
+            '取消'
+        );
+        
+        if (result !== '覆盖') {
+            throw new Error('用户取消了数据结构文件的生成。');
+        }
+    }
+    
+    // 调用 OpenAI 生成实际数据结构代码（通用 prompt）
+    const prompt = await openaiHelper.getActualDataStructurePrompt(
+        commonDSJsonContent,
+        language,
+        context
+    );
+    
+    const generatedCode = await openaiHelper.callOpenAIForJSON(
+        prompt.system,
+        prompt.user
+    );
+    
+    // 清理可能的 markdown 标记
+    const cleanedCode = cleanLLMResponse(generatedCode);
+    
+    // 写入文件（仅写入 codes 下的项目根目录）
+    fs.writeFileSync(dsFilePath, cleanedCode, 'utf8');
+    DesignmentTreeDataProvider.getInstance().refresh(undefined);
+    
+    console.log(`[ActualDS] ${language} 实际数据结构文件已生成: ${dsFilePath}`);
+    
+    return dsFilePath;
 }
 
 /**
