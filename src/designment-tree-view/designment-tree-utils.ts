@@ -1,3 +1,4 @@
+import assert from 'assert'
 import * as vscode from 'vscode'
 import * as path from 'path'
 import * as fs from 'fs'
@@ -55,6 +56,8 @@ export async function doModuleDivision(
     const ongoingLeafModulesPath = path.join(projectRootPath, 'ongoing_leaf_modules.json')
     const currentContentPath = parent.getContentFilePath()
     const isFirstLevel = parent.type === NodeType.Project
+
+    assert(currentContentPath, 'Module division on a node without content file path is not allowed.')
 
     let expectedPrefix = ''
     let prompt: { system: string, user: string }

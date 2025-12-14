@@ -27,7 +27,7 @@ export abstract class DesignmentTreeNode {
         public parent?: DirectoryNode,
     ) {}
 
-    abstract getContentFilePath(): string
+    abstract getContentFilePath(): string | undefined
     abstract isRefinable(): boolean
     abstract isExtendable(): boolean
     abstract isLeaf(): boolean
@@ -106,7 +106,7 @@ export class FileNode extends DesignmentTreeNode {
             label: this.label,
             absolutePath: this.absolutePath,
             type: this.getTypeString(),
-            childrenCount: 0
+            childrenCount: 0,
         }
     }
 }
@@ -114,21 +114,24 @@ export class FileNode extends DesignmentTreeNode {
 export class DirectoryNode extends DesignmentTreeNode {
     public children: DesignmentTreeNode[]
     public banned: boolean = false
+    public contentFilePath?: string
     constructor(
         label: string,
         absolutePath: string,
         type: NodeType.Project | NodeType.Module,
         parent?: DirectoryNode,
+        contentFilePath?: string,
         children?: DesignmentTreeNode[],
         banned?: boolean
     ) {
         super(label, absolutePath, type, parent)
         this.children = children || []
         this.banned = banned || false
+        this.contentFilePath = contentFilePath
     }
-
-    getContentFilePath(): string {
-        return path.join(this.absolutePath, 'content.txt')
+    
+    getContentFilePath(): string | undefined {
+        return this.contentFilePath
     }
 
     isRefinable(): boolean {
@@ -148,7 +151,8 @@ export class DirectoryNode extends DesignmentTreeNode {
             label: this.label,
             absolutePath: this.absolutePath,
             type: this.getTypeString(),
-            childrenCount: this.children.length
+            childrenCount: this.children.length,
+            contentFilePath: this.contentFilePath
         }
     }
 

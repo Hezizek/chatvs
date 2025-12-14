@@ -9,7 +9,8 @@ export interface persistenceTreeNode {
     absolutePath: string
     type: string
     // When parsing the object tree, we only need to know if it has children or not.
-    childrenCount: number
+    childrenCount: number,
+    contentFilePath?: string
 }
 
 const persistentFilePath: string = path.join(settings.getAiPath(), 'persisted_tree.json')
@@ -36,7 +37,7 @@ function parseProjectTree(treeSequence: persistenceTreeNode[], parent: Directory
 
     const nodeType = NodeType[currentNode.type as keyof typeof NodeType]
     if (nodeType === NodeType.Project || nodeType === NodeType.Module) {
-        const newNode = new DirectoryNode(currentNode.label, currentNode.absolutePath, nodeType, parent)
+        const newNode = new DirectoryNode(currentNode.label, currentNode.absolutePath, nodeType, parent, currentNode.contentFilePath)
         for (let i = 0; i < currentNode.childrenCount; i++) {
             newNode.children.push(parseProjectTree(treeSequence, newNode))
         }
