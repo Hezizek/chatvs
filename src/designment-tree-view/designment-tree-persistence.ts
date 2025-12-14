@@ -9,7 +9,8 @@ export interface persistenceTreeNode {
     absolutePath: string
     type: string
     // When parsing the object tree, we only need to know if it has children or not.
-    childrenCount: number
+    childrenCount: number,
+    contentFilePath?: string
 }
 
 const persistentFilePath: string = path.join(settings.getAiPath(), 'persisted_tree.json')
@@ -35,13 +36,13 @@ function parseProjectTree(treeSequence: persistenceTreeNode[], parent: Directory
     assert(currentNode, 'Unexpected error: tree sequence is unexpectedly empty.')
 
     const nodeType = NodeType[currentNode.type as keyof typeof NodeType]
-    if (nodeType === NodeType.Project || nodeType === NodeType.Module) {
-        const newNode = new DirectoryNode(currentNode.label, currentNode.absolutePath, nodeType, parent)
+    if (nodeType === NodeType.Project || nodeType === NodeType.Module || nodeType === NodeType.DataStructure || nodeType === NodeType.NormalDirectory) {
+        const newNode = new DirectoryNode(currentNode.label, currentNode.absolutePath, nodeType, parent, currentNode.contentFilePath)
         for (let i = 0; i < currentNode.childrenCount; i++) {
             newNode.children.push(parseProjectTree(treeSequence, newNode))
         }
         return newNode
-    } else if (nodeType === NodeType.Requirement || nodeType === NodeType.DataStructure) {
+    } else if (nodeType === NodeType.Requirement || nodeType === NodeType.NormalFile) {
         return new FileNode(currentNode.label, currentNode.absolutePath, nodeType, parent)
     } else {
         throw Error(`Unexpected node type encountered: ${currentNode.type}`)

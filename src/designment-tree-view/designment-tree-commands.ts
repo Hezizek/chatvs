@@ -44,8 +44,10 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                 )
                 
                 const contentPath = selected.getContentFilePath()
-                const doc = await vscode.workspace.openTextDocument(contentPath)
-                await vscode.window.showTextDocument(doc)
+                if (contentPath) {
+                    const doc = await vscode.workspace.openTextDocument(contentPath)
+                    await vscode.window.showTextDocument(doc)
+                }
 
                 if (selected.isRefinable()) {
                     openGranularityWebview(selected.absolutePath)
