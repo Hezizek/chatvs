@@ -5,7 +5,9 @@ import { remake } from './make-new/remake';
 import { confirm } from './confirm/confirm';
 // import { startLogging } from './log/log';
 import { registerWebviewForGranularityPanel, currentRecord } from "./granularity-view/create-granularity-panel";
+import { DesignmentTreeDataProvider } from './designment-tree-view/designment-tree-data-provider';
 import { createTreeView } from './designment-tree-view/designment-tree-commands';
+import { initializeLangIconsRepoPath } from './tools/lang-util';
 
 interface Project {
     id: string;
@@ -17,6 +19,7 @@ export const projects: Project[] = [];
 
 export async function activate(context: vscode.ExtensionContext) {
     registerCreateSetting(context);
+    initializeLangIconsRepoPath(context);
     createTreeView(context);
     // startLogging(context);
     remake(context);
@@ -27,5 +30,9 @@ export async function activate(context: vscode.ExtensionContext) {
 export function deactivate() {
     if (currentRecord) {
         currentRecord.dispose()
+    }
+
+    if (DesignmentTreeDataProvider.hasInstance()) {
+        DesignmentTreeDataProvider.getInstance().dispose()
     }
 }

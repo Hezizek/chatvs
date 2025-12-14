@@ -48,7 +48,7 @@ export async function createModule(
         throw error
     }
 
-    const newModule = new DirectoryNode(label, absolutePath, NodeType.Module, parent, [], parent.banned)
+    const newModule = new DirectoryNode(label, absolutePath, NodeType.Module, parent, filePath, [], parent.banned)
     parent.children.push(newModule)
     const dataProvider = DesignmentTreeDataProvider.getInstance()
     dataProvider.refresh(parent)
@@ -66,7 +66,7 @@ export async function createProject(label: string) {
 
     const dataProvider = DesignmentTreeDataProvider.getInstance()
     if (dataProvider.localNodeTree.find(child => child.label === label)) {
-        vscode.window.showErrorMessage(`已存在同名项目根节点 ${label}，请更换项目名称。`)
+        vscode.window.showErrorMessage(`已存在同名项目 ${label}，请更换项目名称。`)
         return
     }
 
@@ -82,7 +82,7 @@ export async function createProject(label: string) {
         throw error
     }
 
-    const newProj = new DirectoryNode(label, absolutePath, NodeType.Project)
+    const newProj = new DirectoryNode(label, absolutePath, NodeType.Project, undefined, filePath)
     const reqModule = new FileNode('Project Requirement', filePath, NodeType.Requirement, newProj)
     newProj.children.push(reqModule)
 

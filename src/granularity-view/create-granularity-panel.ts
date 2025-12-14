@@ -7,12 +7,12 @@ import * as settings from '../settings/settings'
 import * as openaiHelper from '../openai/openai-helper'
 import { GranularityViewProvider } from './granularity-view-provider'
 import { GranularityNode, GranularityRecord } from './granularity-record'
-import { getSrcFileSuffix } from '../tools/lang-util'
 import { cleanLLMResponse, getHumanJsonPath, LineData } from './granularity-view-utils'
 import { initialProject, removeProject } from '../tools/project-initializer'
 import { writeModule } from '../tools/module-writer'
 import { updateRootLaunchConfig, removeRootLaunchConfig } from '../tools/launch-config-updater'
 import { encoding_for_model } from "@dqbd/tiktoken";
+import { FileNode, DirectoryNode, NodeType } from '../designment-tree-view/designment-tree-data-provider'
 
 
 export let currentRecord: GranularityRecord | null = null
@@ -397,17 +397,17 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
             const targetRecord = currentRecord
 
             const language = payload && payload.language ? payload.language : 'python'
-            const fileSuffix = getSrcFileSuffix(language) || '.txt'
             const aiPath = settings.getAiPath();
 
-            const projectHandlerRoot = targetRecord.projectHandler.rootPath;
-            const projectName = path.basename(projectHandlerRoot);
-            const codeProjectRoot = path.join(settings.getCodesPath(), projectName);
+            const projectHandler = targetRecord.projectHandler
+            const projectRootPath = projectHandler.rootPath
+            const projectName = path.basename(projectRootPath)
+            const codeProjectRoot = path.join(settings.getCodesPath(), projectName)
 
             const rootPath = targetRecord.getRootPath()
             const relativePath = path.relative(aiPath, rootPath)
             
-            const leafModulesPath = path.join(projectHandlerRoot, 'leaf_modules.json')
+            const leafModulesPath = path.join(projectRootPath, 'leaf_modules.json')
             let leafModules: any[] = []
             if (fs.existsSync(leafModulesPath)) {
                 leafModules = JSON.parse(fs.readFileSync(leafModulesPath, 'utf8'))
@@ -426,7 +426,6 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 // 如果是第一个模块，先生成实际数据结构文件
                 if (isFirstModule) {
                     console.log('[generateCode] 检测到第一个模块，开始生成实际数据结构文件...')
-                    const projectRootPath = targetRecord.projectHandler.rootPath
                     await initialProject(codeProjectRoot, language);
                     
                     try {
@@ -435,14 +434,22 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         vscode.window.showInformationMessage(`实际数据结构文件已生成: ${path.basename(dsFilePath)}`)
                         console.log('[generateCode] 实际数据结构文件生成成功:', dsFilePath)
                         
-                        // 刷新树视图以显示新生成的实际数据结构文件
-                        const { DesignmentTreeDataProvider } = await import('../designment-tree-view/designment-tree-data-provider.js')
-                        const treeProvider = DesignmentTreeDataProvider.getInstance()
-                        // 重新加载整个树以确保新文件被扫描到
-                        const { getlocalNodeTree } = await import('../designment-tree-view/designment-tree-persistence.js')
-                        treeProvider.localNodeTree = getlocalNodeTree()
-                        treeProvider.refresh(undefined)
-                        console.log('[generateCode] 已刷新树视图以显示实际数据结构文件')
+                        // 将生成的数据结构文件添加到树视图的 Common Data Structures 节点下
+                        const dsNode = projectHandler.getDataStructureNode()
+                        
+                        // 创建数据结构文件节点
+                        const dsFileNode = new FileNode(
+                            path.basename(dsFilePath),
+                            dsFilePath,
+                            NodeType.NormalFile,
+                            dsNode
+                        )
+                        
+                        // 添加到 Common Data Structures 节点的子节点中
+                        dsNode.children.push(dsFileNode)
+                        
+                        // 刷新树视图
+                        projectHandler.updateProjectTree()
 
                     } catch (dsError) {
                         console.error('[generateCode] 生成实际数据结构文件失败:', dsError)
@@ -455,14 +462,14 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				const prompt = await openaiHelper.getGenerateCodePrompt(fileContent, lastNode.description, language, rootPath)
 				const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
 				const generatedCode = cleanLLMResponse(result)
-				const moduleRelativePath = path.relative(projectHandlerRoot, rootPath);
+				const moduleRelativePath = path.relative(projectRootPath, rootPath);
                 const generatedFilePath = await writeModule(
                     codeProjectRoot,
                     moduleRelativePath,
                     generatedCode,
                     language
                 );
-                const projectPath=settings.getProjectPath();
+                const projectPath = settings.getProjectPath();
 
                 if (isLastModule) {
                     await updateRootLaunchConfig(projectPath, projectName, generatedFilePath, language);
@@ -477,7 +484,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 				vscode.window.showInformationMessage(`代码已生成，文件已保存: ${path.basename(generatedFilePath)}`)
 
                 // Synchronize seq.json file.
-                targetRecord.projectHandler.setOnGoingModule(seqIndex + 1)
+                projectHandler.setOnGoingModule(seqIndex + 1)
                 currentRecord = targetRecord
                 currentRecord.fireUpdate()
 

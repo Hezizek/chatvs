@@ -1,91 +1,76 @@
+import assert from 'assert'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as settings from '../settings/settings'
 import { DesignmentTreeNode, DirectoryNode, FileNode, NodeType } from './designment-tree-data-provider'
 
-export function getlocalNodeTree(): DesignmentTreeNode[] {
-    const aiPath = settings.getAiPath()
-    const dirs = fs.readdirSync(aiPath, { withFileTypes: true })
-    const projectNodes: DesignmentTreeNode[] = []
-
-    // 过滤掉以 _ 或 . 开头的目录（如 .codes, .vscode 等）
-    dirs.filter(dir => !dir.name.startsWith('_') && !dir.name.startsWith('.') && dir.isDirectory()).forEach(item => {
-        const fullPath = path.join(aiPath, item.name)
-        getProjectTreeStructure(fullPath).then(projectNode => {
-            projectNodes.push(projectNode)
-        })
-    })
-    return projectNodes
+export interface persistenceTreeNode {
+    label: string
+    absolutePath: string
+    type: string
+    // When parsing the object tree, we only need to know if it has children or not.
+    childrenCount: number,
+    contentFilePath?: string
 }
 
-async function getProjectTreeStructure(fullPath: string): Promise<DirectoryNode> {
-    const projectNode = new DirectoryNode(
-        path.basename(fullPath),
-        fullPath,
-        NodeType.Project
-    )    
+const persistentFilePath: string = path.join(settings.getAiPath(), 'persisted_tree.json')
 
-    // 检查并添加 common_data_structures.json
-    if (fs.existsSync(path.join(fullPath, 'common_data_structures.json'))) {
-        const dataStructureNode = new FileNode(
-            'Common Data Structures', 
-            path.join(fullPath, 'common_data_structures.json'),
-            NodeType.DataStructure,
-            projectNode
-        )
-        projectNode.children.push(dataStructureNode)
+
+export function buildTreeFromSerializedForm(): DesignmentTreeNode[] {
+    if (!fs.existsSync(persistentFilePath)) {
+        return []
     }
-    
-    // 检查并添加实际数据结构文件（data_structures.py, data_structures.java 等）
-    const dataStructureFiles = fs.readdirSync(fullPath).filter(file => 
-        file.startsWith('data_structures.') && !file.endsWith('.json')
-    )
-    
-    dataStructureFiles.forEach(fileName => {
-        const actualDSNode = new FileNode(
-            'Actual Data Structures',
-            path.join(fullPath, fileName),
-            NodeType.DataStructure,
-            projectNode
-        )
-        projectNode.children.push(actualDSNode)
-    })
 
-    projectNode.children.push(new FileNode(
-        'Project Requirements', 
-        path.join(fullPath, 'content.txt'),
-        NodeType.Requirement,
-        projectNode
-    ))
-
-    const dirs = fs.readdirSync(fullPath, { withFileTypes: true })
-    dirs.filter(dir => !dir.name.startsWith('_') && dir.isDirectory()).forEach(item => {
-        const modulePath = path.join(fullPath, item.name)
-        parseModule(modulePath).then(moduleNode => {
-            moduleNode.parent = projectNode
-            projectNode.children.push(moduleNode)
-        })
-    })
-
-    return projectNode
+    const treeSequences: persistenceTreeNode[][] = JSON.parse(fs.readFileSync(persistentFilePath, 'utf-8'))
+    return treeSequences.map(treeSequence => parseProjectTree(treeSequence, undefined))
 }
 
 
-async function parseModule(modulePath: string): Promise<DirectoryNode> {
-    const moduleNode = new DirectoryNode(
-        path.basename(modulePath),
-        modulePath,
-        NodeType.Module
-    )
+// Recursive function to parse a project tree.
+function parseProjectTree(treeSequence: persistenceTreeNode[], parent: DirectoryNode | undefined): DesignmentTreeNode {
+    if (treeSequence.length === 0) {
+        throw Error('Unexpected error: encountered empty tree sequence while building project tree')
+    }
 
-    const dirs = fs.readdirSync(modulePath, { withFileTypes: true })
-    dirs.filter(dir => !dir.name.startsWith('_') && dir.isDirectory()).forEach(item => {
-        const subModulePath = path.join(modulePath, item.name)
-        parseModule(subModulePath).then(subModuleNode => {
-            subModuleNode.parent = moduleNode
-            moduleNode.children.push(subModuleNode)
+    const currentNode = treeSequence.shift()
+    assert(currentNode, 'Unexpected error: tree sequence is unexpectedly empty.')
+
+    const nodeType = NodeType[currentNode.type as keyof typeof NodeType]
+    if (nodeType === NodeType.Project || nodeType === NodeType.Module || nodeType === NodeType.DataStructure || nodeType === NodeType.NormalDirectory) {
+        const newNode = new DirectoryNode(currentNode.label, currentNode.absolutePath, nodeType, parent, currentNode.contentFilePath)
+        for (let i = 0; i < currentNode.childrenCount; i++) {
+            newNode.children.push(parseProjectTree(treeSequence, newNode))
+        }
+        return newNode
+    } else if (nodeType === NodeType.Requirement || nodeType === NodeType.NormalFile) {
+        return new FileNode(currentNode.label, currentNode.absolutePath, nodeType, parent)
+    } else {
+        throw Error(`Unexpected node type encountered: ${currentNode.type}`)
+    }
+}
+
+
+export async function persistTree(designmentTree: DesignmentTreeNode[]): Promise<void> {
+    const projects: persistenceTreeNode[][] = []
+    designmentTree.forEach(project => {
+        if (project instanceof DirectoryNode && project.type === NodeType.Project) {
+            const projectObjectSequence: persistenceTreeNode[] = []
+            preOrderTraverseProject(project, projectObjectSequence)
+            projects.push(projectObjectSequence)
+        } else {
+            throw Error('Unexpected error: root node of a designment tree is not a project directory node')
+        }
+    })    
+
+    fs.writeFileSync(persistentFilePath, JSON.stringify(projects, null, 2))
+}
+
+// Recursive function for serializing a project tree.
+function preOrderTraverseProject(root: DesignmentTreeNode, sequence: persistenceTreeNode[]): void {
+    sequence.push(root.getObject())
+    if (root instanceof DirectoryNode) {
+        root.children.forEach(child => {
+            preOrderTraverseProject(child, sequence)
         })
-    })
-    
-    return moduleNode
+    }
 }

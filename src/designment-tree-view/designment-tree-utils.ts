@@ -1,7 +1,8 @@
+import assert from 'assert'
 import * as vscode from 'vscode'
 import * as path from 'path'
 import * as fs from 'fs'
-import { DesignmentTreeNode, DirectoryNode, FileNode, NodeType } from './designment-tree-data-provider'
+import { DesignmentTreeNode, DirectoryNode, NodeType } from './designment-tree-data-provider'
 import { topoSortLeafModules } from '../tools/module-topology-util'
 import * as designmentService from './designment-tree-service'
 import * as openaiHelper from '../openai/openai-helper'
@@ -56,6 +57,8 @@ export async function doModuleDivision(
     const ongoingLeafModulesPath = path.join(projectRootPath, 'ongoing_leaf_modules.json')
     const currentContentPath = parent.getContentFilePath()
     const isFirstLevel = parent.type === NodeType.Project
+
+    assert(currentContentPath, 'Module division on a node without content file path is not allowed.')
 
     let expectedPrefix = ''
     let prompt: { system: string, user: string }
@@ -244,11 +247,12 @@ export async function getCommonDS(
             writeJsonAtomically(dsPath, result)
         }
         
-        const commonDSNode = new FileNode(
+        const commonDSNode = new DirectoryNode(
             'Common Data Structures',
-            dsPath,
+            dsPath, // TODO
             NodeType.DataStructure,
-            targetNode
+            targetNode,
+            dsPath
         )
 
         // 将数据结构节点添加到children中，使其在树中可见

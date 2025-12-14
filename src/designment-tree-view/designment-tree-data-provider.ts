@@ -2,13 +2,16 @@ import assert from 'assert'
 import * as vscode from 'vscode'
 import * as path from 'path'
 import * as fs from 'fs'
-import { getlocalNodeTree } from './designment-tree-persistence'
+import { buildTreeFromSerializedForm, persistenceTreeNode, persistTree } from './designment-tree-persistence'
+import { getLangIconPath } from '../tools/lang-util'
 
 export enum NodeType {
     Project,
     Module,
     Requirement,
-    DataStructure
+    DataStructure,
+    NormalDirectory,
+    NormalFile
 }
 
 // It's only for designment stage for now.
@@ -27,16 +30,18 @@ export abstract class DesignmentTreeNode {
         public parent?: DirectoryNode,
     ) {}
 
-    abstract getContentFilePath(): string
+    abstract getContentFilePath(): string | undefined
     abstract isRefinable(): boolean
     abstract isExtendable(): boolean
     abstract isLeaf(): boolean
+    // Get the object form of this node for serialization, which can be directly used to construct the same node.
+    abstract getObject(): persistenceTreeNode
 
-    public getTypeString(): string {
+    getTypeString(): string {
         return NodeType[this.type]
     }
 
-    public getProjectState(): ProjectState {
+    getProjectState(): ProjectState {
         let iter: DesignmentTreeNode = this
         while (iter.parent) iter = iter.parent
         if (iter.type === NodeType.Project && iter instanceof DirectoryNode) {
@@ -50,7 +55,7 @@ export abstract class DesignmentTreeNode {
         }
     }
 
-    public switchBannedProjectState(): DirectoryNode {
+    switchBannedProjectState(): DirectoryNode {
         let iter: DesignmentTreeNode = this
         while (iter.parent) iter = iter.parent
         if (iter.type === NodeType.Project && iter instanceof DirectoryNode) {
@@ -71,12 +76,13 @@ export abstract class DesignmentTreeNode {
         }
     }
 }
+    
 
 export class FileNode extends DesignmentTreeNode {
     constructor(
         label: string,
         absolutePath: string,
-        type: NodeType.Requirement | NodeType.DataStructure,
+        type: NodeType.Requirement | NodeType.NormalFile,
         parent?: DirectoryNode,
     ) {
         super(label, absolutePath, type, parent)
@@ -97,26 +103,38 @@ export class FileNode extends DesignmentTreeNode {
     isLeaf(): boolean {
         return true
     }
+
+    getObject(): persistenceTreeNode {
+        return {
+            label: this.label,
+            absolutePath: this.absolutePath,
+            type: this.getTypeString(),
+            childrenCount: 0,
+        }
+    }
 }
 
 export class DirectoryNode extends DesignmentTreeNode {
     public children: DesignmentTreeNode[]
     public banned: boolean = false
+    public contentFilePath?: string
     constructor(
         label: string,
         absolutePath: string,
-        type: NodeType.Project | NodeType.Module,
+        type: NodeType.Project | NodeType.Module | NodeType.DataStructure | NodeType.NormalDirectory,
         parent?: DirectoryNode,
+        contentFilePath?: string,
         children?: DesignmentTreeNode[],
         banned?: boolean
     ) {
         super(label, absolutePath, type, parent)
         this.children = children || []
         this.banned = banned || false
+        this.contentFilePath = contentFilePath
     }
-
-    getContentFilePath(): string {
-        return path.join(this.absolutePath, 'content.txt')
+    
+    getContentFilePath(): string | undefined {
+        return this.contentFilePath
     }
 
     isRefinable(): boolean {
@@ -129,6 +147,16 @@ export class DirectoryNode extends DesignmentTreeNode {
 
     isLeaf(): boolean {
         return this.children.length === 0
+    }
+
+    getObject(): persistenceTreeNode {
+        return {
+            label: this.label,
+            absolutePath: this.absolutePath,
+            type: this.getTypeString(),
+            childrenCount: this.children.length,
+            contentFilePath: this.contentFilePath
+        }
     }
 
     // When the node is selected, whether the module creating button should be activated.
@@ -145,14 +173,18 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
     private static instance: DesignmentTreeDataProvider | null = null
 
     private constructor() {
-        this.localNodeTree = getlocalNodeTree()
+        this.localNodeTree = buildTreeFromSerializedForm()
     }
 
-    public static getInstance(): DesignmentTreeDataProvider {
+    static getInstance(): DesignmentTreeDataProvider {
         if (!this.instance) {
             this.instance = new DesignmentTreeDataProvider()
         }   
         return this.instance
+    }
+
+    static hasInstance(): boolean {
+        return this.instance !== null
     }
 
     // Below are normal TreeDataProvider implementations.
@@ -174,9 +206,9 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
         return element.isExtendable() ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
     }
 
-    private getIconPath(element: DesignmentTreeNode): vscode.ThemeIcon {
+    private getIconPath(element: DesignmentTreeNode): vscode.ThemeIcon | vscode.Uri {
 
-        if (element instanceof DirectoryNode && element.banned) {
+        if (element instanceof DirectoryNode && (element.type == NodeType.Project || element.type == NodeType.Module) && element.banned) {
             // Show spinning circle.
             return new vscode.ThemeIcon('loading~spin')
         }
@@ -191,6 +223,11 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
                 return new vscode.ThemeIcon('checklist', new vscode.ThemeColor('charts.yellow'))
             case NodeType.DataStructure:    
                 return new vscode.ThemeIcon('database', new vscode.ThemeColor('charts.orange'))
+            case NodeType.NormalDirectory:
+                return new vscode.ThemeIcon('folder', new vscode.ThemeColor('charts.white'))
+            case NodeType.NormalFile:
+                const langIconPath = getLangIconPath(element.absolutePath)
+                return langIconPath ? vscode.Uri.file(langIconPath) : new vscode.ThemeIcon('list-flat', new vscode.ThemeColor('charts.white'))
             default:
                 throw new Error(`Unexpected node type for icon path retrieval: ${NodeType[element.type]}`)
         }
@@ -231,9 +268,23 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
         )
     }
 
+
+    // Given the absolute path of project, then return the corresponding project node.
+    getProjectNodeByAbsolutePath(absolutePath: string): DirectoryNode | undefined {
+        return this.localNodeTree.find(node => node instanceof DirectoryNode && node.absolutePath === absolutePath) as DirectoryNode | undefined
+    }
+
     // Update the view after changing node data.
     refresh(fileNode: DesignmentTreeNode | DesignmentTreeNode[] | undefined | null): void {
         this._onDidChangeTreeData.fire(fileNode)
+        // 每次刷新时都持久化树结构，确保数据及时保存
+        persistTree(this.localNodeTree)
+    }
+
+    
+    // Invoked when the extension is activated
+    dispose() {
+        persistTree(this.localNodeTree)
     }
 
     // Banned the whole project that the given node is in.
