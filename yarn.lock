@@ -154,6 +154,11 @@
     enabled "2.0.x"
     kuler "^2.0.0"
 
+"@dqbd/tiktoken@^1.0.22":
+  version "1.0.22"
+  resolved "https://registry.npmjs.org/@dqbd/tiktoken/-/tiktoken-1.0.22.tgz"
+  integrity sha512-RYhO8xeHkMNX5Ixqf4M1Ve3siCYJY/dI0yLnlX4M4oIEDOvjMIQ+E+3OUpAaZcWTaMtQJzGcDAghYfllpx3i/w==
+
 "@eslint-community/eslint-utils@^4.2.0", "@eslint-community/eslint-utils@^4.4.0":
   version "4.4.0"
   resolved "https://registry.npmmirror.com/@eslint-community/eslint-utils/-/eslint-utils-4.4.0.tgz"
