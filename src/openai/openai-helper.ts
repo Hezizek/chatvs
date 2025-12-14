@@ -39,7 +39,8 @@ export async function callOpenAIForJSON<T = any>(
     systemPrompt: string,
     userPrompt: string,
     schema?: z.ZodSchema<T>,
-    maxRetries: number = 3
+    maxRetries: number = 3,
+    maxTokens: number = -1
 ): Promise<string> {
     let lastError: any = null;
     let modifiedUserPrompt = userPrompt;
@@ -47,22 +48,43 @@ export async function callOpenAIForJSON<T = any>(
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
             const client = await initializeOpenAI();
+            let response;
+            if (maxTokens < 0) {
+                response = await client.chat.completions.create({
+                    model: 'gpt-35-turbo',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: systemPrompt
+                        },
+                        {
+                            role: 'user',
+                            content: modifiedUserPrompt
+                        }
+                    ],
+                    temperature: 0.1,
+                    max_tokens: 1024 * 8
+                });
+            }
+            else{
+                response = await client.chat.completions.create({
+                    model: 'gpt-35-turbo',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: systemPrompt
+                        },
+                        {
+                            role: 'user',
+                            content: modifiedUserPrompt
+                        }
+                    ],
+                    temperature: 0.1,
+                    max_tokens: maxTokens
+                });
+                
 
-            const response = await client.chat.completions.create({
-                model: 'gpt-35-turbo',
-                messages: [
-                    {
-                        role: 'system',
-                        content: systemPrompt
-                    },
-                    {
-                        role: 'user',
-                        content: modifiedUserPrompt
-                    }
-                ],
-                temperature: 0.7,
-                max_tokens: 1024 * 8
-            });
+            }
 
             const content = response.choices[0]?.message?.content || '';
 
@@ -197,7 +219,7 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
                 // 实际代码存放在 codes 目录下
                 const projectName = relativePath.split(path.sep)[0];
                 const codeProjectRoot = path.join(getCodesPath(), projectName);
-                
+
                 // 依赖模块的相对路径（去掉项目名前缀）
                 const depModulePathParts = depModuleName.split('.');
                 if (depModulePathParts[0] === projectName) {
@@ -314,7 +336,7 @@ export async function getJson2PsePrompt(fileContent: string, currentModulePath?:
 
     // 临时措施，从 fileContent和commonDSContent 中移除所有项目名前缀
     if (projectName) {
-        const regex = new RegExp(`"${projectName}\\.`,"g");
+        const regex = new RegExp(`"${projectName}\\.`, "g");
         fileContent = fileContent.replace(regex, '"');
         commonDSContent = commonDSContent.replace(regex, '"');
     }

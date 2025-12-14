@@ -264,6 +264,7 @@
     "typescript": "^5.5.4"
   },
   "dependencies": {
+    "@dqbd/tiktoken": "^1.0.22",
     "@azure/identity": "^4.4.1",
     "@azure/openai": "^2.0.0-beta.2",
     "azure-openai": "^0.9.4",
