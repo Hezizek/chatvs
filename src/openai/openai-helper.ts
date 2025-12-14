@@ -197,33 +197,41 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
 
         // 获取当前模块名称 - 使用相对路径
         const relativePath = path.relative(aiPath, currentModulePath);
-        const currentModuleName = relativePath.split(path.sep).join('.');
+        // 将路径标准化为正斜杠格式，以便与 path 字段匹配
+        const normalizedPath = relativePath.split(path.sep).join('/');
 
-        // 找到当前模块
-        const currentModule = leafModules.find((mod: any) => mod.module_name === currentModuleName);
+        // 找到当前模块 - 使用 path 字段匹配（需要统一路径分隔符）
+        const currentModule = leafModules.find((mod: any) => {
+            // 将 mod.path 也标准化为正斜杠
+            const modPath = mod.path ? mod.path.replace(/\\/g, '/') : '';
+            return modPath === normalizedPath;
+        });
         if (!currentModule || !currentModule.dependencies || currentModule.dependencies.length === 0) {
-            console.log('[getDependencyModulesCode] 当前模块没有依赖或找不到模块:', currentModuleName);
+            console.log('[getDependencyModulesCode] 当前模块没有依赖或找不到模块，路径:', normalizedPath);
             return '';
         }
 
         console.log('[getDependencyModulesCode] 找到', currentModule.dependencies.length, '个依赖模块');
+
+        // 获取项目名称（用于构建路径）
+        const projectName = relativePath.split(path.sep)[0];
 
         // 读取所有依赖模块的代码
         let dependenciesCode = '';
         for (const depModuleName of currentModule.dependencies) {
             if (codeType === 'actual') {
                 // 实际代码存放在 codes 目录下
-                const projectName = relativePath.split(path.sep)[0];
-                const codeProjectRoot = path.join(getCodesPath(), projectName);
+                const codesPath = getCodesPath();
 
-                // 依赖模块的相对路径（去掉项目名前缀）
-                const depModulePathParts = depModuleName.split('.');
-                if (depModulePathParts[0] === projectName) {
-                    depModulePathParts.shift(); // 去掉项目名
+                // 从 leaf_modules.json 中查找依赖模块的 path 字段
+                const depModule = leafModules.find((mod: any) => mod.module_name === depModuleName);
+                if (!depModule || !depModule.path) {
+                    console.log(`[getDependencyModulesCode] 未找到依赖模块的 path 信息:`, depModuleName);
+                    continue;
                 }
-                const depModuleNameWithoutProject = depModulePathParts.join('.');
 
-                const depCodePath = path.join(codeProjectRoot, ...depModulePathParts);
+                // path 字段已包含项目名，如 "sleep/CLIDriver"，直接使用
+                const depCodePath = path.join(codesPath, depModule.path);
 
                 // 尝试匹配各种语言的文件扩展名
                 const extensions = ['.py', '.java', '.c', '.cpp', '.js', '.ts'];
@@ -233,7 +241,8 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
                     const depFilePath = depCodePath + ext;
                     if (fs.existsSync(depFilePath)) {
                         const depCode = fs.readFileSync(depFilePath, 'utf-8');
-                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleNameWithoutProject} ===\n${depCode}\n`;
+                        // 使用 modulename 作为显示名称（传给大模型）
+                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
                         console.log(`[getDependencyModulesCode] 成功读取依赖模块的实际代码:`, depModuleName, '文件:', path.basename(depFilePath));
                         foundFile = true;
                         break;
@@ -244,8 +253,16 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
                     console.log(`[getDependencyModulesCode] 未找到依赖模块的实际代码文件:`, depModuleName, '搜索路径:', depCodePath);
                 }
             } else {
-                // 伪代码仍然从 .ai 目录的 node.json 查找
-                const depModulePath = path.join(aiPath, ...depModuleName.split('.'));
+                // 伪代码从 .ai 目录的 node.json 查找
+                // 从 leaf_modules.json 中查找依赖模块的 path 字段
+                const depModule = leafModules.find((mod: any) => mod.module_name === depModuleName);
+                if (!depModule || !depModule.path) {
+                    console.log(`[getDependencyModulesCode] 未找到依赖模块的 path 信息:`, depModuleName);
+                    continue;
+                }
+
+                // path 字段已包含项目名，如 "sleep/CLIDriver"，直接使用
+                const depModulePath = path.join(aiPath, depModule.path);
                 const depNodeJsonPath = path.join(depModulePath, 'node.json');
 
                 if (fs.existsSync(depNodeJsonPath)) {
@@ -264,17 +281,11 @@ async function getDependencyModulesCode(currentModulePath: string, codeType: 'ps
                             }
                         }
                     }
-                    const projectName = relativePath.split(path.sep)[0];
-                    // 依赖模块的相对路径（去掉项目名前缀）
-                    const depModulePathParts = depModuleName.split('.');
-                    if (depModulePathParts[0] === projectName) {
-                        depModulePathParts.shift(); // 去掉项目名
-                    }
-                    const depModuleNameWithoutProject = depModulePathParts.join('.');
 
                     if (targetNode && targetNode.filePath && fs.existsSync(targetNode.filePath)) {
                         const depCode = fs.readFileSync(targetNode.filePath, 'utf-8');
-                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleNameWithoutProject} ===\n${depCode}\n`;
+                        // 使用 modulename 作为显示名称（传给大模型）
+                        dependenciesCode += `\n\n=== 依赖模块: ${depModuleName} ===\n${depCode}\n`;
                         console.log(`[getDependencyModulesCode] 成功读取依赖模块的伪代码:`, depModuleName, '文件:', path.basename(targetNode.filePath));
                     } else {
                         console.log(`[getDependencyModulesCode] 未找到依赖模块的伪代码节点:`, depModuleName);
