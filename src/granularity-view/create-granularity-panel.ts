@@ -12,7 +12,7 @@ import { initialProject, removeProject } from '../tools/project-initializer'
 import { writeModule } from '../tools/module-writer'
 import { updateRootLaunchConfig, removeRootLaunchConfig } from '../tools/launch-config-updater'
 import { encoding_for_model } from "@dqbd/tiktoken";
-import { FileNode, DirectoryNode, NodeType } from '../designment-tree-view/designment-tree-data-provider'
+import { FileNode, NodeType } from '../designment-tree-view/designment-tree-data-provider'
 
 
 export let currentRecord: GranularityRecord | null = null
@@ -335,7 +335,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                             const dataStructureNode = targetRecord.projectHandler.getDataStructureNode()
                             dataStructureNode.children = []
                             targetRecord.projectHandler.updateProjectTree()
-                            
+
                             vscode.window.showInformationMessage(`检测到首模块代码生成回退，已移除代码相关数据。`)
                         }
 
