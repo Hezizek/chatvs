@@ -94,7 +94,7 @@ export async function doModuleDivision(
 
         const requirementsPath = path.join(aiPath, projectName, 'content.txt')
         
-        prompt = await openaiHelper.getModuleDivisionPrompt2(ongoingLeafModulesPath, requirementsPath, currentModuleName, context)
+        prompt = await openaiHelper.getModuleDivisionPrompt2(ongoingLeafModulesPath, requirementsPath, cleanModuleName, context)
     }
 
     const MAX_RETRIES = 3

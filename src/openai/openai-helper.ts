@@ -797,7 +797,7 @@ export async function getModuleDivisionPrompt1(filePath: string, context: vscode
     const fileContent = new TextDecoder().decode(fileContentBytes);
 
     const projectName = path.basename(path.dirname(filePath));
-    const userPrompt = `请根据以下原始需求文档进行模块划分：\n\n${fileContent}\n\n项目名称为：${projectName}。你所划分的模块名称应该使用项目名称作为前缀，以确保唯一性。例如，如果项目名称是“a“，则模块名称可以是”a/module1“、“a/module2“等。\n\n
+    const userPrompt = `请根据以下原始需求文档进行模块划分：\n\n${fileContent}\n\n
     请直接返回符合要求的 JSON 数组，不要使用markdown代码块标记（\`\`\`），只返回纯文本内容。`;
 
 

@@ -115,7 +115,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 let maxRefinementMultiples
                 if (refineLevel === 'coarse') {
                     prompt = await openaiHelper.getGlobalRefinePromptCoarse(fileContent, rootPath, commonDSPath)
-                    maxRefinementMultiples = 1.2
+                    maxRefinementMultiples = -1
                 } else {
                     // 默认使用 detailed（较细）
                     prompt = await openaiHelper.getGlobalRefinePromptDetailed(fileContent, rootPath, commonDSPath)
@@ -326,7 +326,9 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         if (isFirstModule) {
                             const codeProjectRoot = path.join(settings.getCodesPath(), projectName)
                             await removeProject(codeProjectRoot)
-                            vscode.window.showInformationMessage(`检测到首模块代码生成回退，已重置代码项目目录。`)
+                            vscode.window.showInformationMessage(`检测到首模块代码生成回退，已移除代码相关数据。`)
+
+
                         }
 
                         // 2. 如果是最后一个模块，且回退掉了代码生成步骤 -> 删除 Launch 配置
