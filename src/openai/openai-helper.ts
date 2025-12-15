@@ -63,7 +63,7 @@ export async function callOpenAIForJSON<T = any>(
                         }
                     ],
                     temperature: 0.1,
-                    max_tokens: 1024 * 8
+                    max_tokens: 1024 * 16
                 });
             }
             else{
