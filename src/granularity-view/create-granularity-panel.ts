@@ -35,7 +35,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('GranularityView', provider)
     )
-    
+
     context.subscriptions.push(refinementDiagnostics);
 
     // Register webview commands.
@@ -63,26 +63,26 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     const lastNode = targetRecord.getLastNode()
                     const targetFilePath = lastNode.filePath
                     const fileContent = fs.readFileSync(targetFilePath, 'utf8')
-    
+
                     // 获取项目根路径并构建通用数据结构路径
                     const projectRootPath = targetRecord.projectHandler.rootPath
                     const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
-    
+
                     const prompt = await openaiHelper.getJson2PsePrompt(fileContent, rootPath, commonDSPath)
-                    
+
                     // It will take long here, where currentRecord may change.
                     const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
-    
+
                     const timestamp = Date.now()
                     const generatedFilePath = path.join(rootPath, `pseudotrans_json2pse_${timestamp}.txt`)
-                
+
                     fs.writeFileSync(generatedFilePath, result, 'utf8')
                     targetRecord.appendNode(generatedFilePath, '伪代码 ' + lastNode.index, 'pseudo', false)
-    
+
                     // Switch back to the corresponding module.
                     currentRecord = targetRecord
                     currentRecord.fireUpdate()
-    
+
                     // 成功：更新消息并停留1秒
                     progress.report({ message: 'JSON转伪代码完成！' });
                     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -114,11 +114,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     const lastNode = targetRecord.getLastNode()
                     const targetFilePath = lastNode.filePath
                     const fileContent = fs.readFileSync(targetFilePath, 'utf8')
-    
+
                     // 获取项目根路径并构建通用数据结构路径
                     const projectRootPath = targetRecord.projectHandler.rootPath
                     const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
-    
+
                     let prompt
                     let maxRefinementMultiples
                     if (refineLevel === 'coarse') {
@@ -130,22 +130,22 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         maxRefinementMultiples = -1
                     }
                     const encoder = encoding_for_model("gpt-3.5-turbo");
-                    const inputTokenNum =encoder.encode(fileContent).length;
+                    const inputTokenNum = encoder.encode(fileContent).length;
                     const maxTokens = Math.min(1024 * 8, Math.floor(inputTokenNum * maxRefinementMultiples));
-                    
-                    
+
+
                     // It will take long here, where currentRecord may change.
                     const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user, undefined, undefined, maxTokens)
                     const timestamp = Date.now()
                     const generatedFilePath = path.join(rootPath, `pseudotrans_global_refined_${timestamp}.txt`)
-                
+
                     fs.writeFileSync(generatedFilePath, result, 'utf8')
-                    targetRecord.appendNode(generatedFilePath,  '伪代码 ' + lastNode.index, 'pseudo', false)
-    
+                    targetRecord.appendNode(generatedFilePath, '伪代码 ' + lastNode.index, 'pseudo', false)
+
                     // Switch back to the corresponding module.
                     currentRecord = targetRecord
                     currentRecord.fireUpdate()
-    
+
                     // 成功：更新消息并停留1秒
                     progress.report({ message: '全局精化完成！' });
                     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -184,95 +184,95 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     const fileContent = editor.document.getText()
                     const selectedCode = editor.document.getText(selection)
                     // 注意：VS Code 的 line 是从 0 开始的，这里 +1 可能是为了 Prompt 显示
-                    const startLine = selection.start.line + 1 
+                    const startLine = selection.start.line + 1
                     const endLine = selection.end.line + 1
-    
+
                     // 获取项目根路径并构建通用数据结构路径
                     const projectRootPath = targetRecord.projectHandler.rootPath
                     const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
-                    
+
                     const prompt = await openaiHelper.getLocalRefinePrompt(fileContent, startLine, endLine, selectedCode, rootPath, commonDSPath)
                     const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
                     const refinedContent = cleanLLMResponse(result)
-    
+
                     const timestamp = Date.now()
                     const generatedFilePath = path.join(rootPath, `pseudotrans_local_refined_${timestamp}.txt`)
-                    
+
                     let oldStatus: LineData[] = []
                     if (fs.existsSync(sourceJsonPath)) {
                         oldStatus = JSON.parse(fs.readFileSync(sourceJsonPath, 'utf-8'))
                     }
-    
+
                     const changes = Diff.diffLines(fileContent, refinedContent)
-    
+
                     const highlightRanges: { start: number, end: number }[] = []
                     let newStatus: LineData[] = []
-    
+
                     let currentOffset = 0; // 追踪新文件 (refinedContent) 的字符偏移量
                     let oldLineIndex = 0; // 追踪旧文件当前处理到的行号
-    
+
                     changes.forEach(part => {
                         const lineCount = part.count || 0
                         const textLength = part.value.length
-    
+
                         if (part.added) {
                             highlightRanges.push({
                                 start: currentOffset,
                                 end: currentOffset + textLength
                             })
-    
+
                             for (let i = 0; i < lineCount; i++) {
                                 newStatus.push({ type: 0, content: '' })
                             }
-    
+
                             currentOffset += textLength
-    
+
                         } else if (part.removed) {
                             oldLineIndex += lineCount
-                            
+
                         } else {
                             for (let i = 0; i < lineCount; i++) {
                                 if (oldLineIndex < oldStatus.length) {
-                                    newStatus.push({ 
-                                        type: oldStatus[oldLineIndex].type, 
-                                        content: '' 
+                                    newStatus.push({
+                                        type: oldStatus[oldLineIndex].type,
+                                        content: ''
                                     })
                                 } else {
                                     newStatus.push({ type: 0, content: '' })
                                 }
                                 oldLineIndex++
                             }
-    
+
                             currentOffset += textLength
                         }
                     })
-                    
+
                     const refinedLines = refinedContent.split(/\r?\n/)
                     if (refinedContent.endsWith('\n') && refinedLines.length > newStatus.length) {
                         refinedLines.pop()
                     }
-    
+
                     newStatus.forEach((status, index) => {
                         if (index < refinedLines.length) {
                             status.content = refinedLines[index]
                         }
                     })
-    
+
                     const newJsonPath = getHumanJsonPath(generatedFilePath)
-    
+
                     fs.writeFileSync(newJsonPath, JSON.stringify(newStatus, null, 2), 'utf-8')
                     fs.writeFileSync(generatedFilePath, refinedContent, 'utf8')
-    
+
                     targetRecord.appendNode(generatedFilePath, '伪代码 ' + lastNode.index, 'pseudo', false, highlightRanges)
-                    
+
                     // Switch back to the corresponding module.
                     currentRecord = targetRecord
                     currentRecord.fireUpdate()
-    
+
                     // 成功：更新消息并停留1秒
                     progress.report({ message: '局部精化完成！' });
                     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
                 } catch (err) {
                     vscode.window.showErrorMessage(`局部精化失败: ${err}`)
                 }
@@ -281,23 +281,26 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     )
 
     context.subscriptions.push(
-		vscode.commands.registerCommand('refinement.rollback', async () => {
-            
+        vscode.commands.registerCommand('refinement.rollback', async () => {
+
             assert(currentRecord, 'No usable record for granularity panel.')
             const targetRecord: GranularityRecord = currentRecord
 
             const currentIndex = targetRecord.getCurrentIndex()
-			if (currentIndex < 0) {
-				vscode.window.showWarningMessage('您还没有选择要回退到的伪代码记录。')
-				return
-			}
-            
+            if (currentIndex < 0) {
+                vscode.window.showWarningMessage('您还没有选择要回退到的伪代码记录。')
+                return
+            }
+
             const rootPath = targetRecord.getRootPath()
             const projectHandlerRoot = targetRecord.projectHandler.rootPath
             const projectName = path.basename(projectHandlerRoot)
             const aiPath = settings.getAiPath()
             const relativePath = path.relative(aiPath, rootPath)
-            
+
+            // todo: 携带语言信息
+            const language = 'python'
+
             const leafModulesPath = path.join(projectHandlerRoot, 'leaf_modules.json')
             let leafModules: any[] = []
             if (fs.existsSync(leafModulesPath)) {
@@ -318,15 +321,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     const allNodes: GranularityNode[] = JSON.parse(fs.readFileSync(nodeJsonPath, 'utf8'))
                     // index 之后的节点都会被移除（currentIndex 是我们要回退到的目标）
                     const nodesToRemove = allNodes.slice(currentIndex + 1)
-                    
+
                     // 查找是否有 "code" 类型的节点被移除
                     const codeNode = nodesToRemove.find(n => n.nodeType === 'code')
-                    
-                    if (codeNode) {
-                        // 尝试从描述中提取语言，例如 "实际代码（python）"
-                        const match = codeNode.description.match(/实际代码（(.+)）/)
-                        const language = match ? match[1] : 'python' // 默认回退值
 
+                    if (codeNode) {
                         // 1. 如果是第一个模块，且回退掉了代码生成步骤 -> 删除整个代码项目
                         if (isFirstModule) {
                             const codeProjectRoot = path.join(settings.getCodesPath(), projectName)
@@ -351,14 +350,14 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 }
             }
 
-			targetRecord.backTo(currentIndex, false)
+            targetRecord.backTo(currentIndex, false)
             const currentNode = targetRecord.getCurrentNode()
             const description = currentNode ? currentNode.description : '未知伪代码'
 
-            vscode.window.showInformationMessage(`当前模块已回退至`+description+`。`)
+            vscode.window.showInformationMessage(`当前模块已回退至` + description + `。`)
 
             const projectHandler = currentRecord.projectHandler
-                
+
             try {
                 const relativePath = path.relative(aiPath, rootPath)
                 const projectRoot = projectHandler.rootPath
@@ -378,7 +377,20 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         if (module.path) {
                             const moduleFullPath = path.join(aiPath, module.path)
                             const tempRecord = new GranularityRecord(moduleFullPath)
-                                            
+                            //判断变量module当前对应的模块是否为最后一个
+                            const isLastModule = (module === laterModules[laterModules.length - 1])
+
+                            if (isLastModule) {
+                                // 判断是否有代码节点被移除
+                                const lastNode = tempRecord.getLastNode()
+                                if (lastNode.nodeType === 'code') {
+                                    // 如果是最后一个模块，且回退掉了代码生成步骤 -> 删除 Launch 配置
+                                    const projectPath = settings.getProjectPath()
+                                    await removeRootLaunchConfig(projectPath, projectName, language)
+                                    vscode.window.showInformationMessage(`检测到末模块代码生成回退，已移除相关调试配置。`)
+                                }
+                            }
+
                             tempRecord.backTo(0, false)
                             tempRecord.dispose()
                         }
@@ -397,11 +409,11 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
             } catch (error) {
                 console.error('级联重置失败:', error)
             }
-		})
-	)
-    
+        })
+    )
+
     context.subscriptions.push(
-		vscode.commands.registerCommand('refinement.generateCode', async (payload) => {
+        vscode.commands.registerCommand('refinement.generateCode', async (payload) => {
 
             assert(currentRecord, 'No usable record for granularity panel.')
             const targetRecord = currentRecord
@@ -416,42 +428,42 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
             const rootPath = targetRecord.getRootPath()
             const relativePath = path.relative(aiPath, rootPath)
-            
+
             const leafModulesPath = path.join(projectRootPath, 'leaf_modules.json')
             let leafModules: any[] = []
             if (fs.existsSync(leafModulesPath)) {
                 leafModules = JSON.parse(fs.readFileSync(leafModulesPath, 'utf8'))
             }
-            
+
             const seqIndex = leafModules.findIndex((mod: any) => mod.path === relativePath)
             const isFirstModule = (seqIndex === 0)
             const isLastModule = (seqIndex === leafModules.length - 1)
-            
 
-			await vscode.window.withProgress({
+
+            await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: `正在生成 ${language} 代码...`,
                 cancellable: false
             }, async (progress) => {
                 try {
                     const rootPath = targetRecord.getRootPath()
-                    
+
                     // 如果是第一个模块，先生成实际数据结构文件
                     if (isFirstModule) {
                         console.log('[generateCode] 检测到第一个模块，开始生成实际数据结构文件...')
                         progress.report({ message: '正在初始化项目及生成数据结构...' });
                         await initialProject(codeProjectRoot, language);
-                        
+
                         try {
                             const { generateActualDataStructure } = await import('../tools/actual-datastructure-generator.js')
-                            const dsFilePath = await generateActualDataStructure(projectRootPath, codeProjectRoot,language, context)
-                            
+                            const dsFilePath = await generateActualDataStructure(projectRootPath, codeProjectRoot, language, context)
+
                             progress.report({ message: `数据结构已生成: ${path.basename(dsFilePath)}，继续生成代码...` });
                             console.log('[generateCode] 实际数据结构文件生成成功:', dsFilePath)
-                            
+
                             // 将生成的数据结构文件添加到树视图的 Common Data Structures 节点下
                             const dsNode = projectHandler.getDataStructureNode()
-                            
+
                             // 创建数据结构文件节点
                             const dsFileNode = new FileNode(
                                 path.basename(dsFilePath),
@@ -459,20 +471,20 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                                 NodeType.NormalFile,
                                 dsNode
                             )
-                            
+
                             // 添加到 Common Data Structures 节点的子节点中
                             dsNode.children.push(dsFileNode)
-                            
+
                             // 刷新树视图
                             projectHandler.updateProjectTree()
-    
+
                         } catch (dsError) {
                             console.error('[generateCode] 生成实际数据结构文件失败:', dsError)
                             // 警告不作为致命错误，继续执行
                             vscode.window.showWarningMessage(`生成实际数据结构文件失败: ${dsError}，将继续生成代码...`)
                         }
                     }
-                    
+
                     progress.report({ message: `正在生成模块代码...` });
 
                     const lastNode = targetRecord.getLastNode()
@@ -488,17 +500,17 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         language
                     );
                     const projectPath = settings.getProjectPath();
-    
+
                     if (isLastModule) {
                         await updateRootLaunchConfig(projectPath, projectName, generatedFilePath, language);
                         vscode.window.showInformationMessage(`已更新调试配置: "Run ${projectName}"`);
                     }
-    
-                    targetRecord.appendNode(generatedFilePath, '实际代码（'+language+'）', 'code', false)
+
+                    targetRecord.appendNode(generatedFilePath, '实际代码（' + language + '）', 'code', false)
 
                     projectHandler.setOnGoingModule(seqIndex + 1)
 
-    
+
                     // Switch back to the corresponding module.
                     currentRecord = targetRecord
                     currentRecord.fireUpdate()
@@ -506,26 +518,26 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     // 成功：更新消息并停留1秒
                     progress.report({ message: '代码生成成功！' });
                     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
                 } catch (err) {
                     vscode.window.showErrorMessage(`代码生成失败: ${err}`)
                 }
             });
-		})
-	)
+        })
+    )
 }
 
- // Open the granularity webview for a leaf node.
+// Open the granularity webview for a leaf node.
 export function openGranularityWebview(rootPath: string) {
-    
+
     // Save the current state of record.
     if (currentRecord) {
         currentRecord.dispose()
     }
 
     currentRecord = new GranularityRecord(rootPath)
-    
-    currentRecord.onDidChange(async ( nodes: GranularityNode[] ) => {
+
+    currentRecord.onDidChange(async (nodes: GranularityNode[]) => {
 
         refinementDiagnostics.clear()
 
@@ -533,29 +545,29 @@ export function openGranularityWebview(rootPath: string) {
         assert(currentRecord, 'No usable record for granularity panel.')
         const aiPath = settings.getAiPath()
         const relativePath = path.relative(aiPath, rootPath)
-        
+
         const projectRoot = currentRecord.projectHandler.rootPath
         const leafModulesPath = path.join(projectRoot, 'leaf_modules.json')
-        
+
         let leafModules: any[] = []
         let targetMod: any = null
-        
+
         if (fs.existsSync(leafModulesPath)) {
             leafModules = JSON.parse(fs.readFileSync(leafModulesPath, 'utf8'))
             targetMod = leafModules.find((mod: any) => mod.path === relativePath)
         } else {
-             // Fallback: Check modules.json if leaf_modules.json is missing or mod not found
+            // Fallback: Check modules.json if leaf_modules.json is missing or mod not found
             const modulesPath = path.join(projectRoot, 'modules.json')
             if (fs.existsSync(modulesPath)) {
                 const modules = JSON.parse(fs.readFileSync(modulesPath, 'utf8'))
                 // Try to find in modules.json
-                 const mod = modules.find((m: any) => m.path === relativePath)
-                 if (mod) targetMod = mod
+                const mod = modules.find((m: any) => m.path === relativePath)
+                if (mod) targetMod = mod
             }
         }
-        
+
         assert(targetMod, `无法在模块列表中找到模块: ${path.basename(rootPath)}`)
-        
+
         const currentModuleName = targetMod.name || targetMod.module_name
         const status = targetMod.status || 'pending'
         const moduleSequence = leafModules.map((mod: any) => mod.name || mod.module_name)
@@ -566,7 +578,7 @@ export function openGranularityWebview(rootPath: string) {
         let currentGranularity = activeNode ? activeNode.index - 1 : -1
 
         GranularityViewProvider.postMessage({
-            type: 'updateView', 
+            type: 'updateView',
             data: {
                 nodes: nodes,
                 moduleSequence: moduleSequence,
@@ -606,7 +618,7 @@ export function openGranularityWebview(rootPath: string) {
                     activeNode.highlightRanges.forEach(r => {
                         const startPos = doc.positionAt(r.start);
                         const endPos = doc.positionAt(r.end);
-                        
+
                         // 1. 背景高亮：依然保持 Range 整体高亮，这样背景色是连贯的
                         rangesToDecorate.push(new vscode.Range(startPos, endPos));
 
@@ -624,12 +636,12 @@ export function openGranularityWebview(rootPath: string) {
                                 // [核心修改] 使用 doc.lineAt(l).range 获取该行实际文本的范围
                                 // 这样波浪线会紧贴代码文本，且显示更稳定
                                 const textLine = doc.lineAt(l);
-                                
+
                                 // 如果是空行，range 长度为 0，VS Code 通常不会在空行显示波浪线
                                 // 这是符合预期的（空行不需要待确认标记）
                                 if (!textLine.isEmptyOrWhitespace) {
                                     const diagnostic = new vscode.Diagnostic(
-                                        textLine.range, 
+                                        textLine.range,
                                         '局部精化变更 (待确认)',
                                         vscode.DiagnosticSeverity.Warning
                                     );
@@ -639,7 +651,7 @@ export function openGranularityWebview(rootPath: string) {
                             }
                         }
                     });
-                    
+
                     editor.setDecorations(refineHighlightType, rangesToDecorate);
                 } else {
                     editor.setDecorations(refineHighlightType, [])
