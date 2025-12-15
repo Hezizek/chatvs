@@ -331,7 +331,12 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                         if (isFirstModule) {
                             const codeProjectRoot = path.join(settings.getCodesPath(), projectName)
                             await removeProject(codeProjectRoot)
-                            vscode.window.showInformationMessage(`检测到首模块代码生成回退，已重置代码项目目录。`)
+                            // 1.1 除此之外还要删除树结构中显示的实际数据结构
+                            const dataStructureNode = targetRecord.projectHandler.getDataStructureNode()
+                            dataStructureNode.children = []
+                            targetRecord.projectHandler.updateProjectTree()
+                            
+                            vscode.window.showInformationMessage(`检测到首模块代码生成回退，已移除代码相关数据。`)
                         }
 
                         // 2. 如果是最后一个模块，且回退掉了代码生成步骤 -> 删除 Launch 配置
