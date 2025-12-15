@@ -271,7 +271,11 @@ export class DesignmentTreeDataProvider implements vscode.TreeDataProvider<Desig
 
     // Given the absolute path of project, then return the corresponding project node.
     getProjectNodeByAbsolutePath(absolutePath: string): DirectoryNode | undefined {
-        return this.localNodeTree.find(node => node instanceof DirectoryNode && node.absolutePath === absolutePath) as DirectoryNode | undefined
+        // 使用更鲁棒的查找方式，避免路径格式差异导致的问题
+        return this.localNodeTree.find(node => 
+            node instanceof DirectoryNode && 
+            path.resolve(node.absolutePath) === path.resolve(absolutePath)
+        ) as DirectoryNode | undefined
     }
 
     // Update the view after changing node data.
