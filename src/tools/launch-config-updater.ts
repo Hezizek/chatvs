@@ -78,3 +78,39 @@ function generateConfigForLanguage(workspaceRoot: string, projectName: string, e
             return null;
     }
 }
+
+export async function removeRootLaunchConfig(
+    workspaceRoot: string,
+    projectName: string,
+    language: string
+) {
+    const vscodeDir = path.join(workspaceRoot, '.vscode');
+    const launchJsonPath = path.join(vscodeDir, 'launch.json');
+
+    if (!fs.existsSync(launchJsonPath)) {
+        return;
+    }
+
+    try {
+        const content = fs.readFileSync(launchJsonPath, 'utf8');
+        const launchConfig = JSON.parse(content);
+
+        if (launchConfig.configurations && Array.isArray(launchConfig.configurations)) {
+            const configName = `Run ${projectName} (${language})`;
+            
+            // 过滤掉匹配的配置
+            const newConfigurations = launchConfig.configurations.filter(
+                (c: any) => c.name !== configName
+            );
+
+            // 如果配置数量有变化，说明删除了配置，需要保存
+            if (newConfigurations.length !== launchConfig.configurations.length) {
+                launchConfig.configurations = newConfigurations;
+                fs.writeFileSync(launchJsonPath, JSON.stringify(launchConfig, null, 4), 'utf8');
+                console.log(`[LaunchConfig] 已移除调试配置: ${configName}`);
+            }
+        }
+    } catch (e) {
+        console.warn('移除 launch.json 配置失败', e);
+    }
+}

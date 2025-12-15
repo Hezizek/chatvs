@@ -36,10 +36,10 @@ export class GranularityRecord {
 
         // Contruct the project handler.
         const aiPath = settings.getAiPath()
-        const shortParts = aiPath.split(path.sep).filter(Boolean)
-        const longParts = this.rootPath.split(path.sep).filter(Boolean)
+        const projectName = path.relative(aiPath, this.rootPath).split(path.sep)[0]
+        const projectRoot = path.join(aiPath, projectName)
         this.projectHandler = new ProjectHandler(
-            longParts.slice(0, shortParts.length + 1).join(path.sep)
+            projectRoot
         )
 
     }

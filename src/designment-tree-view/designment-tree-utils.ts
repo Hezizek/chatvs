@@ -2,7 +2,7 @@ import assert from 'assert'
 import * as vscode from 'vscode'
 import * as path from 'path'
 import * as fs from 'fs'
-import { DesignmentTreeNode, DirectoryNode, FileNode, NodeType } from './designment-tree-data-provider'
+import { DesignmentTreeNode, DirectoryNode, NodeType } from './designment-tree-data-provider'
 import { topoSortLeafModules } from '../tools/module-topology-util'
 import * as designmentService from './designment-tree-service'
 import * as openaiHelper from '../openai/openai-helper'
@@ -53,6 +53,7 @@ export async function doModuleDivision(
     const aiPath = settings.getAiPath()
     const projectRootPath = getProjectRootPath(parent)
     const modulesPath = path.join(projectRootPath, 'modules.json')
+    const projectName = path.basename(projectRootPath)
     const ongoingLeafModulesPath = path.join(projectRootPath, 'ongoing_leaf_modules.json')
     const currentContentPath = parent.getContentFilePath()
     const isFirstLevel = parent.type === NodeType.Project
@@ -77,19 +78,23 @@ export async function doModuleDivision(
 
         prompt = await openaiHelper.getModuleDivisionPrompt1(currentContentPath, context)
         
-        const projectName = path.basename(path.dirname(currentContentPath))
-        expectedPrefix = projectName + '.'
+        expectedPrefix = ''  // 不再要求项目名前缀
     } else {
 
         const rawModuleName = path.dirname(path.relative(aiPath, currentContentPath))
         const currentModuleName = rawModuleName.split(path.sep).join('.')
         
-        expectedPrefix = currentModuleName + '.'
+        // 从 currentModuleName 中移除项目名前缀，用于 expectedPrefix 验证
+        const prefixToRemove = projectName + '.';
+        const cleanModuleName = currentModuleName.startsWith(prefixToRemove)
+            ? currentModuleName.substring(prefixToRemove.length)
+            : currentModuleName;
+        
+        expectedPrefix = cleanModuleName + '.'
 
-        const projectName = currentModuleName.split('.')[0]
         const requirementsPath = path.join(aiPath, projectName, 'content.txt')
         
-        prompt = await openaiHelper.getModuleDivisionPrompt2(ongoingLeafModulesPath, requirementsPath, currentModuleName, context)
+        prompt = await openaiHelper.getModuleDivisionPrompt2(ongoingLeafModulesPath, requirementsPath, cleanModuleName, context)
     }
 
     const MAX_RETRIES = 3
@@ -150,8 +155,16 @@ export async function doModuleDivision(
         // 如果不是第一层，现在划分成功了，才从叶子节点列表中移除“父模块”
         if (!isFirstLevel) {
             const rawModuleName = path.dirname(path.relative(aiPath, currentContentPath))
-            const currentModuleName = rawModuleName.split(path.sep).join('.')
-            ongoingLeafModules = ongoingLeafModules.filter((mod: any) => mod.name !== currentModuleName)
+            
+            // 使用 path 字段来匹配删除父模块
+            ongoingLeafModules = ongoingLeafModules.filter((mod: any) => {
+                const modPath = mod.path ? mod.path.replace(/[\/\\]/g, path.sep) : '';
+                return modPath !== rawModuleName;
+            })
+            
+            // 获取父模块的 name（不含项目名）- 从 path 中提取
+            const pathParts = rawModuleName.split(path.sep).filter(p => p && p !== projectName);
+            const parentModuleName = pathParts.join('.');
 
             // 更新依赖模块
             const newModuleNames = result.map((m: any) => m.name)
@@ -160,14 +173,16 @@ export async function doModuleDivision(
 
             const updateDependencies = (modulesList: any[]) => {
                 modulesList.forEach((mod: any) => {
-                    if (mod.dependencies && Array.isArray(mod.dependencies) && mod.dependencies.includes(currentModuleName)) {
-                        mod.dependencies = mod.dependencies.filter((d: string) => d !== currentModuleName)
+                    // 检查是否依赖被拆分的父模块
+                    if (mod.dependencies && Array.isArray(mod.dependencies) && 
+                        parentModuleName && mod.dependencies.includes(parentModuleName)) {
+                        mod.dependencies = mod.dependencies.filter((d: string) => d !== parentModuleName)
                         newModuleNames.forEach((newName: string) => {
                             if (!mod.dependencies.includes(newName)) {
                                 mod.dependencies.push(newName)
                             }
                         })
-                        affectedModules.set(mod.name, mod);
+                        affectedModules.set(mod.name || mod.module_name, mod);
                     }
                 })
             }
@@ -175,15 +190,18 @@ export async function doModuleDivision(
             updateDependencies(allModules)
             // 预写入受影响的 content.txt
             affectedModules.forEach((mod, modName) => {
-                const modRelPath = modName.split('.').join(path.sep)
-                const modContentPath = path.join(aiPath, modRelPath, 'content.txt')
-                
-                if (fs.existsSync(modContentPath)) {
-                    stageJsonWrite(modContentPath, mod);
+                if (mod.path) {
+                    const modContentPath = path.join(aiPath, mod.path, 'content.txt')
+                    if (fs.existsSync(modContentPath)) {
+                        stageJsonWrite(modContentPath, mod);
+                    }
+                } else {
+                    console.warn(`[ModuleDivision] 模块 ${modName} 缺少 path 属性，跳过更新。`)
                 }
             })
         }
         result.forEach((module: any) => {
+            module.path = path.join(projectName, module.name.replace(/\./g, path.sep));
             allModules.push(module)
             ongoingLeafModules.push(module)
 
@@ -283,15 +301,18 @@ export async function getLeafModules(
 
         // Currently, we assume that the topology sequence is fixed after designment stage.
         const sortedResult = topoSortLeafModules(result)
+        const aiPath = settings.getAiPath()
+        const projectName = path.basename(projectPath)
 
         sortedResult.forEach((item: any, index: any) => {
             item.status = index === 0 ? 'ongoing' : 'pending'
 
+            item.path = path.join(projectName, item.module_name.replace(/\./g, path.sep));
+
             // Write the designment information to each leaf module.
-            const aiPath = settings.getAiPath()
             const filePath = path.join(
                 aiPath,
-                item.module_name.replace(/\./g, path.sep),
+                item.path,
                 'designment_info.txt'
             )
             

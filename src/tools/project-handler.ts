@@ -38,7 +38,6 @@ export class ProjectHandler {
 
             // Map raw data to LeafModule objects.
             const leafModules: LeafModule[] = rawList.map(item => {
-                // const relativePath = item.module_name.replace(/\./g, '/')
                 const relativePath: string = item.module_name
                 const status: LeafModule['status'] = item.status
 

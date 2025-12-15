@@ -6,7 +6,7 @@ import { z } from 'zod';
  * 匹配 prompts/非碎片化模块划分.md 和 prompts/子模块划分.md 中定义的 JSON 格式
  * 
  * 必需字段：
- * - name: 模块的全限定名 (PascalCase)，如：a.b
+ * - name: 模块名称 (PascalCase)，不包含项目名前缀，如：Core、UIDriver、Core.Parser
  * - description: 用简练中文描述核心功能和行为
  * - dependencies: 依赖的模块名称列表，无依赖填空数组 []
  */
@@ -29,9 +29,9 @@ export const ModulesArraySchema = z.array(ModuleSchema).min(1, "至少需要一�
  */
 const InterfaceSchema = z.object({
     name: z.string().min(1, "接口名称(name)不能为空"),
-    params: z.string().min(1, "参数列表(params)不能为空"),
+    params: z.string().default(""), // 允许为空字符串，表示无参数
     return_type: z.string().min(1, "返回值类型(return_type)不能为空"),
-    description: z.string().min(20, "接口描述(description)不能为空，必须包含详细的逻辑步骤（至少20个字符），不能只是简单的一句话概括"),
+    description: z.string().min(1, "接口描述(description)不能为空"), // 降低最小长度要求从20到1
 });
 
 /**
@@ -39,7 +39,7 @@ const InterfaceSchema = z.object({
  * 匹配 prompts/所有叶子节点生成提示词.md 中定义的 JSON 格式
  * 
  * 必需字段：
- * - module_name: 模块的全限定名 (PascalCase)，如：a.b.c
+ * - module_name: 模块名称 (PascalCase)，不包含项目名前缀，如：Core、UIDriver、Core.Parser
  * - dependencies: 依赖模块名列表
  * - local_variable: 模块内部持有的私有变量/状态列表
  * - interfaces: 函数接口定义数组（普通模块必须至少有一个接口）
@@ -48,14 +48,14 @@ const InterfaceSchema = z.object({
  * 关键约束：
  * - 如果 entry_point_logic 为 null（普通模块），则 interfaces 必须至少有一个接口
  * - 如果 entry_point_logic 不为 null（驱动模块），则可以没有 interfaces
- * - 每个接口的 description 必须包含详细的逻辑步骤描述（至少20个字符）
+ * - 每个接口的 description 必须包含逻辑描述
  */
 export const LeafModuleSchema = z.object({
     module_name: z.string().min(1, "模块名称(module_name)不能为空"),
     dependencies: z.array(z.string()).default([]),
     local_variable: z.array(z.string()).default([]),
     interfaces: z.array(InterfaceSchema).default([]),
-    entry_point_logic: z.union([z.string().min(20, "入口逻辑(entry_point_logic)不能为空字符串，必须包含详细的逻辑描述（至少20个字符）"), z.null()]).nullable(),
+    entry_point_logic: z.union([z.string().min(1, "入口逻辑(entry_point_logic)不能为空字符串"), z.null()]).nullable(),
 }).refine(
     (data) => {
         // 如果是普通模块（entry_point_logic 为 null），必须至少有一个接口
@@ -66,7 +66,7 @@ export const LeafModuleSchema = z.object({
         return true;
     },
     {
-        message: "普通模块（entry_point_logic为null）必须至少定义一个接口(interfaces)，且每个接口必须包含详细的逻辑步骤描述。驱动模块必须填写entry_point_logic。",
+        message: "普通模块（entry_point_logic为null）必须至少定义一个接口(interfaces)。驱动模块必须填写entry_point_logic。",
         path: ["interfaces"],
     }
 );
