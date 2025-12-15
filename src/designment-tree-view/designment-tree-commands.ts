@@ -73,7 +73,7 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     throw Error('Use deleteModule command for project node.')
                 }
 
-                await designmentService.deleteDirectoryNode(node)
+                await designmentService.deleteModuleNode(node)
             })
         )
 
@@ -84,7 +84,7 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     throw Error('Use deleteProject command for module node.')
                 }
 
-                await designmentService.deleteDirectoryNode(node)
+                await designmentService.deleteProjectNode(node)
             })
         )
 
