@@ -141,7 +141,7 @@
       "panel": [
         {
           "id": "RefinementContainer",
-          "title": "refinement console",
+          "title": "精化面板",
           "icon": "$(layout-panel-right)"
         }
       ]
