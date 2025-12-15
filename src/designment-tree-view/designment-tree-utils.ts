@@ -72,7 +72,6 @@ export async function doModuleDivision(
         ongoingLeafModules = []
         
         // 即使是第一层，也可以先清空文件，确保 Prompt 读到的是空数组（如果 Prompt 逻辑需要的话）
-        // 或者直接依靠 Prompt 内部逻辑。这里为了保险，先原子写入空数组。
         writeJsonAtomically(modulesPath, [])
         writeJsonAtomically(ongoingLeafModulesPath, [])
 
@@ -94,7 +93,7 @@ export async function doModuleDivision(
 
         const requirementsPath = path.join(aiPath, projectName, 'content.txt')
         
-        prompt = await openaiHelper.getModuleDivisionPrompt2(ongoingLeafModulesPath, requirementsPath, cleanModuleName, context)
+        prompt = await openaiHelper.getModuleDivisionPrompt2(ongoingLeafModulesPath, requirementsPath, currentModuleName, context)
     }
 
     const MAX_RETRIES = 3
@@ -137,8 +136,8 @@ export async function doModuleDivision(
     }
 
     if (!isValidResult) {
-        vscode.window.showErrorMessage(`模块划分失败：LLM 未能生成符合命名规范("${expectedPrefix}*")的结果。`)
-        return
+        // [修改] 抛出错误，以便上层捕获
+        throw new Error(`模块划分失败：LLM 未能生成符合命名规范("${expectedPrefix}*")的结果。`)
     }
 
     const pendingRenames: { src: string, dest: string }[] = [];
@@ -235,7 +234,8 @@ export async function doModuleDivision(
             } 
         });
 
-        vscode.window.showErrorMessage(`保存模块数据时发生错误，已终止操作以保护数据一致性: ${error}`)
+        // [修改] 抛出错误，以便上层捕获
+        throw new Error(`保存模块数据时发生错误: ${error}`)
     }
 }
 
@@ -276,7 +276,8 @@ export async function getCommonDS(
 
     } catch (error) {
         console.error('生成通用数据结构失败:', error)
-        vscode.window.showErrorMessage('生成通用数据结构失败，请查看日志。')
+        // [修改] 抛出错误，以便上层捕获
+        throw error
     }
 }
 
@@ -328,6 +329,7 @@ export async function getLeafModules(
         }
     } catch (error) {
         console.error('生成叶子模块列表失败:', error)
-        vscode.window.showErrorMessage('生成叶子模块列表失败，请查看日志。')
+        // [修改] 抛出错误，以便上层捕获
+        throw error
     }
 }
