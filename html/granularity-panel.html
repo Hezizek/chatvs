@@ -44,7 +44,7 @@
 
         <!-- Displayed for pending modules. -->
         <div id="button-bar-pending" class="button-bar-pending">
-            Refinement panel is currently disabled.
+            精化面板目前不可用。
         </div>
     </div>
 
@@ -206,7 +206,7 @@
 
             if (!hasActive) {
                 updateButtonBar('none', 'none', 'none', 'block');
-                buttonBarPending.textContent = 'No selected granularity.';
+                buttonBarPending.textContent = '没有选中的粒度。';
                 return;
             }
 
@@ -243,7 +243,7 @@
             updateButtonBar(cfg[0], cfg[1], cfg[2], cfg[3]);
 
             if (moduleStatus === 'pending') {
-                buttonBarPending.textContent = 'Please refine preceding modules first.';
+                buttonBarPending.textContent = '请先完成前置模块的精化和代码生成。';
             }
         }
 
