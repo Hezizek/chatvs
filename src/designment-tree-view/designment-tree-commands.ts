@@ -140,13 +140,15 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     location: vscode.ProgressLocation.Notification,
                     title: '正在划分模块...',
                     cancellable: false
-                }, async () => {
+                }, async (progress) => {
                     try {
                         await doModuleDivision(node, context)
                         designmentTreeDataProvider.refresh(node)
-                        vscode.window.showInformationMessage('模块划分成功！')
+                        // [修改] 使用 progress.report 显示成功信息，并停留2秒
+                        progress.report({ message: '模块划分成功！' });
+                        await new Promise(resolve => setTimeout(resolve, 2000));
                     } catch (error) {
-                        vscode.window.showErrorMessage('模块划分失败。')
+                        vscode.window.showErrorMessage(`模块划分失败: ${error}`)
                         console.error('Failed to divide module: ', error)
                     }
                 })
@@ -168,13 +170,15 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     location: vscode.ProgressLocation.Notification,
                     title: '正在划分初始模块...',
                     cancellable: false
-                }, async () => {
+                }, async (progress) => {
                     try {
                         await doModuleDivision(node, context)
                         designmentTreeDataProvider.refresh(node)
-                        vscode.window.showInformationMessage('模块划分成功！')
+                        // [修改] 使用 progress.report 显示成功信息，并停留2秒
+                        progress.report({ message: '模块划分成功！' });
+                        await new Promise(resolve => setTimeout(resolve, 2000));
                     } catch (error) {
-                        vscode.window.showErrorMessage('模块划分失败。')
+                        vscode.window.showErrorMessage(`模块划分失败: ${error}`)
                         console.error('Failed to divide module: ', error)
                     }
                 })
@@ -192,14 +196,16 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     location: vscode.ProgressLocation.Notification,
                     title: '正在提取通用数据结构...',
                     cancellable: false
-                }, async () => {
+                }, async (progress) => {
                     try {
                         await getCommonDS(node, context)
                         designmentTreeDataProvider.refresh(node)
-                        vscode.window.showInformationMessage('通用数据结构提取成功！')
+                        // [修改] 使用 progress.report 显示成功信息，并停留2秒
+                        progress.report({ message: '通用数据结构提取成功！' });
+                        await new Promise(resolve => setTimeout(resolve, 2000));
 
                     } catch (error) {
-                        vscode.window.showErrorMessage('提取通用数据结构失败。')
+                        vscode.window.showErrorMessage(`提取通用数据结构失败: ${error}`)
                         console.error('Failed to extract common data structure: ', error)
                     }
                 })
@@ -216,13 +222,15 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     location: vscode.ProgressLocation.Notification,
                     title: '正在获取叶子模块...',
                     cancellable: false
-                }, async () => {
+                }, async (progress) => {
                     try {
                         await getLeafModules(node.absolutePath, context)
                         designmentTreeDataProvider.refresh(node)
-                        vscode.window.showInformationMessage('叶子模块获取成功！')
+                        // [修改] 使用 progress.report 显示成功信息，并停留2秒
+                        progress.report({ message: '叶子模块获取成功！' });
+                        await new Promise(resolve => setTimeout(resolve, 2000));
                     } catch (error) {
-                        vscode.window.showErrorMessage('获取叶子模块失败。')
+                        vscode.window.showErrorMessage(`获取叶子模块失败: ${error}`)
                         console.error('Failed to get leaf modules: ', error)
                     }
                 })
@@ -245,4 +253,3 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
         }
     })
 }
-
