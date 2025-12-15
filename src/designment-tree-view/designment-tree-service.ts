@@ -4,6 +4,7 @@ import * as fs from 'fs'
 import * as settings from '../settings/settings'
 import { DesignmentTreeDataProvider, DirectoryNode, FileNode, NodeType } from './designment-tree-data-provider'
 import { GranularityNode } from '../granularity-view/granularity-record'
+import { get } from 'http'
 
 // Interfaces for modules json persistence.
 interface ModuleEntry {
@@ -178,13 +179,13 @@ export async function deleteModuleNode(node: DirectoryNode) {
         throw new Error('Module node has no parent.')
     }
 
-    const parentFullName = getModuleFullName(parent)
     const parentChildren = parent.children
     const index = parentChildren.indexOf(node)
     parentChildren.splice(index, 1)
 
     // If the parent now has no children, it becomes a leaf again.
-    if (parentChildren.length === 0) {
+    const parentBackToLeafModule = parentChildren.length === 0 && parent.type === NodeType.Module
+    if (parentBackToLeafModule) {
         const parentPath = parent.absolutePath
         const nodeJsonPath = path.join(parentPath, 'node.json')
         const designmentPath = path.join(parentPath, 'designment_info.txt')
@@ -199,7 +200,7 @@ export async function deleteModuleNode(node: DirectoryNode) {
         fs.writeFileSync(nodeJsonPath, JSON.stringify([firstGranulairty], null, 4), 'utf8')
 
         // Add parent to the ongoingLeafModules.json
-        const parentModuleEntry = modulesEntries.find(entry => entry.name === parentFullName)
+        const parentModuleEntry = modulesEntries.find(entry => entry.name === getModuleFullName(parent))
 
         if (!parentModuleEntry) {
             throw new Error('Unexpected error: parent module entry not found in modules.json.')
@@ -211,18 +212,29 @@ export async function deleteModuleNode(node: DirectoryNode) {
     // Handle dependencies.
     modulesEntries.forEach(entry => {
         const newDependencies = entry.dependencies.filter(dep => !dep.startsWith(moduleFullName))
-        if (newDependencies.length < entry.dependencies.length && parentChildren.length === 0) {
-            newDependencies.push(parentFullName)
+        if (newDependencies.length < entry.dependencies.length && parentBackToLeafModule) {
+            newDependencies.push(getModuleFullName(parent))
         }
         entry.dependencies = newDependencies
     })
 
     ongoingLeafModulesEntries.forEach(entry => {
         const newDependencies = entry.dependencies.filter(dep => !dep.startsWith(moduleFullName))
-        if (newDependencies.length < entry.dependencies.length && parentChildren.length === 0) {
-            newDependencies.push(parentFullName)
+        if (newDependencies.length < entry.dependencies.length && parentBackToLeafModule) {
+            newDependencies.push(getModuleFullName(parent))
         }
         entry.dependencies = newDependencies
+    })
+
+    // Write changes to each node's content file.
+    const pseudoPath = settings.getAiPath()
+    modulesEntries.forEach(entry => {
+        const contentFilePath = path.join(pseudoPath, entry.path, 'content.txt')
+        if (fs.existsSync(contentFilePath)) {
+            fs.writeFileSync(contentFilePath, JSON.stringify(entry, null, 2), 'utf8')
+        } else {
+            throw new Error(`Content file not found for module ${entry.name} at path: ${contentFilePath}`)
+        }
     })
 
     fs.writeFileSync(modulesJsonPath, JSON.stringify(modulesEntries, null, 2), 'utf8')
