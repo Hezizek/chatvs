@@ -120,22 +120,15 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
 
                     let prompt
-                    let maxRefinementMultiples
                     if (refineLevel === 'coarse') {
                         prompt = await openaiHelper.getGlobalRefinePromptCoarse(fileContent, rootPath, commonDSPath)
-                        maxRefinementMultiples = 1.2
                     } else {
                         // 默认使用 detailed（较细）
                         prompt = await openaiHelper.getGlobalRefinePromptDetailed(fileContent, rootPath, commonDSPath)
-                        maxRefinementMultiples = -1
                     }
-                    const encoder = encoding_for_model("gpt-3.5-turbo");
-                    const inputTokenNum = encoder.encode(fileContent).length;
-                    const maxTokens = Math.min(1024 * 8, Math.floor(inputTokenNum * maxRefinementMultiples));
-
 
                     // It will take long here, where currentRecord may change.
-                    const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user, undefined, undefined, maxTokens)
+                    const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user, undefined, undefined)
                     const timestamp = Date.now()
                     const generatedFilePath = path.join(rootPath, `pseudotrans_global_refined_${timestamp}.txt`)
 
