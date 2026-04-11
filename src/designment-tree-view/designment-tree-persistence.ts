@@ -17,12 +17,94 @@ const persistentFilePath: string = path.join(settings.getAiPath(), 'persisted_tr
 
 
 export function buildTreeFromSerializedForm(): DesignmentTreeNode[] {
-    if (!fs.existsSync(persistentFilePath)) {
-        return []
+    const treeSequences: persistenceTreeNode[][] = (() => {
+        if (!fs.existsSync(persistentFilePath)) {
+            return []
+        }
+
+        try {
+            return JSON.parse(fs.readFileSync(persistentFilePath, 'utf-8'))
+        } catch {
+            return []
+        }
+    })()
+
+    const serializedTrees = treeSequences
+        .map(treeSequence => {
+            try {
+                return parseProjectTree([...treeSequence], undefined)
+            } catch {
+                return undefined
+            }
+        })
+        .filter((node): node is DesignmentTreeNode => !!node)
+
+    return reconcileProjectsFromFilesystem(serializedTrees)
+}
+
+
+function reconcileProjectsFromFilesystem(nodes: DesignmentTreeNode[]): DesignmentTreeNode[] {
+    const aiPath = settings.getAiPath()
+    if (!fs.existsSync(aiPath)) {
+        return nodes
     }
 
-    const treeSequences: persistenceTreeNode[][] = JSON.parse(fs.readFileSync(persistentFilePath, 'utf-8'))
-    return treeSequences.map(treeSequence => parseProjectTree(treeSequence, undefined))
+    const result = [...nodes]
+    const existingProjectPaths = new Set(
+        result
+            .filter(node => node instanceof DirectoryNode && node.type === NodeType.Project)
+            .map(node => path.resolve(node.absolutePath))
+    )
+
+    const projectDirs = fs.readdirSync(aiPath, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => path.join(aiPath, dirent.name))
+
+    projectDirs.forEach(projectPath => {
+        const normalizedProjectPath = path.resolve(projectPath)
+        if (existingProjectPaths.has(normalizedProjectPath)) {
+            return
+        }
+
+        const projectName = path.basename(projectPath)
+        const requirementPath = path.join(projectPath, 'content.txt')
+        const dsPath = path.join(projectPath, 'common_data_structures.json')
+        const rootPath = path.join(projectPath, 'Root')
+        const rootContentPath = path.join(rootPath, 'content.txt')
+
+        const hasRequirement = fs.existsSync(requirementPath)
+        const hasDs = fs.existsSync(dsPath)
+        const hasRoot = fs.existsSync(rootPath) && fs.existsSync(rootContentPath)
+
+        // Not a valid project directory for design tree.
+        if (!hasRequirement && !hasDs && !hasRoot) {
+            return
+        }
+
+        const projectNode = new DirectoryNode(projectName, projectPath, NodeType.Project, undefined, hasRequirement ? requirementPath : undefined)
+
+        if (hasDs) {
+            projectNode.children.push(
+                new DirectoryNode('Common Data Structures', dsPath, NodeType.DataStructure, projectNode, dsPath)
+            )
+        }
+
+        if (hasRequirement) {
+            projectNode.children.push(
+                new FileNode('Project Requirement', requirementPath, NodeType.Requirement, projectNode)
+            )
+        }
+
+        if (hasRoot) {
+            projectNode.children.push(
+                new DirectoryNode('Root', rootPath, NodeType.Module, projectNode, rootContentPath)
+            )
+        }
+
+        result.push(projectNode)
+    })
+
+    return result
 }
 
 

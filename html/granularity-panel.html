@@ -26,12 +26,8 @@
     <div class="panel-shell">
         <div id="design-panel" class="panel active">
             <div class="panel-title">设计阶段</div>
-            <div class="toolbar">
-                <input id="design-custom-prompt" class="prompt-input" type="text" placeholder="拆分提示词（在树中点击拆分按钮时使用）" />
-                <button type="button" title="删除当前精化中的叶子模块" onclick="sendCommand('refinement.deleteCurrentModule')">删除当前模块</button>
-            </div>
             <div id="design-stage-tip" class="panel-hint">
-                在上方树中点击“拆分/扩写”完成结构设计。完成后请先在左侧项目树执行“完成设计（提取数据结构 + 生成精化顺序）”，再进入精化阶段。
+                在上方树中通过“新增/拆分/删除/改描述”完成结构设计。完成后请先在左侧项目树执行“完成设计（提取数据结构 + 生成精化顺序）”，再进入精化阶段。
             </div>
         </div>
 
@@ -170,7 +166,7 @@
 
             const hasChildren = Object.keys(node.children).length > 0;
             const module = node.module;
-            const isLeafModule = !!module;
+            const isLeafModule = !!module && !hasChildren;
             const desc = module ? (module.description || '') : '';
             const status = module ? (module.status || 'pending') : '';
 
@@ -211,35 +207,50 @@
                 wrapper.appendChild(descDiv);
             }
 
-            if (!readonlyMode && isLeafModule) {
+            if (!readonlyMode && module) {
                 const actions = document.createElement('div');
                 actions.className = 'tree-actions';
 
-                const splitBtn = document.createElement('button');
-                splitBtn.className = 'mini-btn';
-                splitBtn.title = '将该模块拆分为子模块';
-                splitBtn.textContent = '拆分';
-                splitBtn.onclick = () => {
-                    const customPrompt = (document.getElementById('design-custom-prompt').value || '').trim();
-                    sendCommand('refinement.splitModuleByPath', { modulePath: module.path, customPrompt });
-                };
-                actions.appendChild(splitBtn);
+                if (!isLeafModule) {
+                    const createBtn = document.createElement('button');
+                    createBtn.className = 'mini-btn';
+                    createBtn.title = '新增子模块';
+                    createBtn.textContent = '新增';
+                    createBtn.onclick = () => {
+                        const moduleName = (window.prompt(`新增 ${module.name} 的子模块名称`) || '').trim();
+                        if (!moduleName) return;
+                        const moduleDescription = (window.prompt(`新增模块 ${moduleName} 的描述（可选）`) || '').trim();
+                        sendCommand('refinement.createChildModuleByPath', {
+                            modulePath: module.path,
+                            moduleName,
+                            moduleDescription
+                        });
+                    };
+                    actions.appendChild(createBtn);
+                }
 
-                const createBtn = document.createElement('button');
-                createBtn.className = 'mini-btn';
-                createBtn.title = '新增子模块';
-                createBtn.textContent = '新增';
-                createBtn.onclick = () => {
-                    const moduleName = (window.prompt(`新增 ${module.name} 的子模块名称`) || '').trim();
-                    if (!moduleName) return;
-                    const moduleDescription = (window.prompt(`新增模块 ${moduleName} 的描述（可选）`) || '').trim();
-                    sendCommand('refinement.createChildModuleByPath', {
-                        modulePath: module.path,
-                        moduleName,
-                        moduleDescription
-                    });
+                if (isLeafModule) {
+                    const splitBtn = document.createElement('button');
+                    splitBtn.className = 'mini-btn';
+                    splitBtn.title = '将该模块拆分为子模块';
+                    splitBtn.textContent = '拆分';
+                    splitBtn.onclick = () => {
+                        const customPrompt = (window.prompt(`输入 ${module.name} 的拆分提示词（可选）`) || '').trim();
+                        sendCommand('refinement.splitModuleByPath', { modulePath: module.path, customPrompt });
+                    };
+                    actions.appendChild(splitBtn);
+                }
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'mini-btn';
+                deleteBtn.title = '删除该模块节点';
+                deleteBtn.textContent = '删除';
+                deleteBtn.onclick = () => {
+                    const ok = window.confirm(`确认删除模块 ${module.name} 及其子结构吗？`);
+                    if (!ok) return;
+                    sendCommand('refinement.deleteModuleByPath', { modulePath: module.path });
                 };
-                actions.appendChild(createBtn);
+                actions.appendChild(deleteBtn);
 
                 const editBtn = document.createElement('button');
                 editBtn.className = 'mini-btn';
@@ -253,15 +264,6 @@
                     });
                 };
                 actions.appendChild(editBtn);
-
-                const expandBtn = document.createElement('button');
-                expandBtn.className = 'mini-btn';
-                expandBtn.title = '用 AI 将简述扩写为详尽的职责描述';
-                expandBtn.textContent = '✎ 扩写';
-                expandBtn.onclick = () => {
-                    sendCommand('refinement.expandDescription', { modulePath: module.path });
-                };
-                actions.appendChild(expandBtn);
 
                 wrapper.appendChild(actions);
             }

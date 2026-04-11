@@ -181,12 +181,11 @@
         {
           "id": "CodeToolBox.welcome",
           "name": "welcome",
-          "when": "!CodeToolBox.chatGPTView"
+          "when": "false"
         },
         {
           "id": "CodeToolBox.chatGPTView",
-          "name": "CodeSketcher",
-          "when": "CodeToolBox.chatGPTView"
+          "name": "CodeSketcher"
         }
       ],
       "RefinementContainer": [

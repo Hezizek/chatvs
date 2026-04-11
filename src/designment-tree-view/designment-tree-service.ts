@@ -168,8 +168,8 @@ export async function discardRefinementFromModulePath(
 }
 
 export async function updateLeafModuleDescription(node: DirectoryNode, description: string): Promise<void> {
-    if (node.type !== NodeType.Module || !node.isLeaf()) {
-        throw new Error('Only leaf module description can be edited.')
+    if (node.type !== NodeType.Module) {
+        throw new Error('Only module description can be edited.')
     }
 
     const projectNode = getProjectNode(node)
@@ -198,7 +198,7 @@ export async function updateLeafModuleDescription(node: DirectoryNode, descripti
     const updatedModules = updateInFile(modulesPath)
     const updatedOngoing = updateInFile(ongoingPath)
 
-    if (!updatedLeaf && !updatedModules && !updatedOngoing) {
+    if (node.isLeaf() && !updatedLeaf && !updatedModules && !updatedOngoing) {
         throw new Error(`未在模块描述存储中找到路径：${relativePath}`)
     }
 

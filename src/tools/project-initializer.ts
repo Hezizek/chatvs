@@ -34,6 +34,11 @@ function initPython(root: string) {
     if (!fs.existsSync(envFile)) {
         fs.writeFileSync(envFile, 'PYTHONPATH=.', 'utf8');
     }
+
+    const initFile = path.join(root, '__init__.py');
+    if (!fs.existsSync(initFile)) {
+        fs.writeFileSync(initFile, '', 'utf8');
+    }
 }
 
 export async function removeProject(projectRoot: string) {

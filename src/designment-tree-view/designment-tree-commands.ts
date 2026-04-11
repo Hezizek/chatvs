@@ -3,41 +3,63 @@ import * as vscode from 'vscode'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as designmentService from './designment-tree-service'
-import { DesignmentTreeDataProvider, DirectoryNode, NodeType } from './designment-tree-data-provider'
+import { DesignmentTreeDataProvider, DesignmentTreeNode, DirectoryNode, NodeType } from './designment-tree-data-provider'
 import { doModuleDivision, getCommonDS, getLeafModules } from './designment-tree-utils'
 import { disposeCurrentRecordAndCloseWebview, openGranularityWebview } from '../granularity-view/create-granularity-panel'
 import * as settings from '../settings/settings';
 
+let treeViewInstance: vscode.TreeView<DesignmentTreeNode> | undefined
+let treeViewBootstrapped = false
 
 export async function createTreeView(context: vscode.ExtensionContext) {
+
+    vscode.commands.executeCommand("setContext", "CodeToolBox.chatGPTView", true)
 
     context.subscriptions.push(
         vscode.commands.registerCommand("CodeToolBox.openChatGPTView", async () => {
             const structureReady = await settings.ensureProjectStructure();
             
             if (structureReady) {
-                openChatGPTView(context)
+                await openChatGPTView(context, true)
             }
         })
     )
+
+    // Bootstrap once on activation so the design tree is always renderable,
+    // even if the user creates data from other entry points first.
+    try {
+        await openChatGPTView(context, false)
+    } catch (error) {
+        console.error('Failed to bootstrap design tree view:', error)
+        vscode.window.showErrorMessage(`设计树初始化失败: ${error}`)
+    }
 }
 
 
-const openChatGPTView = (context: vscode.ExtensionContext) => {
-    vscode.commands.executeCommand("workbench.view.extension.CodeToolBox").then(() => {
+const openChatGPTView = async (context: vscode.ExtensionContext, revealView: boolean) => {
+    if (revealView) {
+        await vscode.commands.executeCommand("workbench.view.extension.CodeToolBox")
+    }
+
         const designmentTreeDataProvider = DesignmentTreeDataProvider.getInstance()
 
+        if (treeViewBootstrapped) {
+            designmentTreeDataProvider.refresh(undefined)
+            vscode.commands.executeCommand("setContext", "CodeToolBox.chatGPTView", true)
+            return
+        }
+
         // Backward compatibility: recover legacy projects created without a root module.
-        designmentTreeDataProvider.localNodeTree.forEach(async (node) => {
+        for (const node of designmentTreeDataProvider.localNodeTree) {
             if (!(node instanceof DirectoryNode) || node.type !== NodeType.Project) {
-                return
+                continue
             }
 
             const hasModuleChild = node.children.some(
                 (child) => child instanceof DirectoryNode && child.type === NodeType.Module
             )
             if (hasModuleChild) {
-                return
+                continue
             }
 
             const firstLine = (() => {
@@ -57,16 +79,19 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
             }, null, 2)
 
             await designmentService.createModule(node, 'Root', rootContent)
-        })
+        }
 
-        const treeView = vscode.window.createTreeView('CodeToolBox.chatGPTView', {
+        treeViewInstance = vscode.window.createTreeView('CodeToolBox.chatGPTView', {
             treeDataProvider: designmentTreeDataProvider
         })
 
-        context.subscriptions.push(treeView)
+        context.subscriptions.push(treeViewInstance)
+
+        // 确保树被正确刷新显示最新的项目
+        designmentTreeDataProvider.refresh(undefined)
 
         // Listen to node selection.
-        treeView.onDidChangeSelection(async event => {
+        treeViewInstance.onDidChangeSelection(async event => {
             // When single node selected, we need to handle the click event.
             if (event.selection.length === 1) {
 
@@ -83,11 +108,19 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                     await vscode.window.showTextDocument(doc)
                 }
 
-                const isLeafModule = selected instanceof DirectoryNode && selected.type === NodeType.Module && selected.isLeaf()
-                if (selected.isRefinable() || isLeafModule) {
+                if (selected instanceof DirectoryNode && selected.type === NodeType.Module) {
                     openGranularityWebview(selected.absolutePath)
+                } else if (selected instanceof DirectoryNode && selected.type === NodeType.Project) {
+                    const rootModule = selected.children.find(
+                        (child) => child instanceof DirectoryNode && child.type === NodeType.Module && child.label === 'Root'
+                    ) as DirectoryNode | undefined
+                    if (rootModule) {
+                        openGranularityWebview(rootModule.absolutePath)
+                    } else {
+                        disposeCurrentRecordAndCloseWebview()
+                    }
                 } else {
-                    // If not refinable, close the granularity panel.
+                    // If not module/project, close the granularity panel.
                     disposeCurrentRecordAndCloseWebview()
                 }
 
@@ -171,7 +204,7 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
         context.subscriptions.push(
             vscode.commands.registerCommand('CodeToolBox.createModule', async () => {
 
-                const selected = treeView.selection[0]
+                const selected = treeViewInstance?.selection[0]
 
                 assert(selected && selected instanceof DirectoryNode, 'Selected node is not a directory node.')
 
@@ -220,6 +253,10 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
 
                 const requirementFilePath = await designmentService.createProject(newProjName)
                 if (requirementFilePath) {
+                    // 确保树视图上下文已开启，并刷新可见数据
+                    vscode.commands.executeCommand("setContext", "CodeToolBox.chatGPTView", true)
+                    designmentTreeDataProvider.refresh(undefined)
+
                     // 创建后自动打开需求文件，用户直接编辑
                     const doc = await vscode.workspace.openTextDocument(requirementFilePath)
                     await vscode.window.showTextDocument(doc)
@@ -342,8 +379,8 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
         vscode.commands.executeCommand("setContext", "CodeToolBox.chatGPTView", true)
 
         function checkModuleDivisionButtonState() {
-            const selected = treeView.selection[0]
-            if (selected && treeView.selection.length === 1) {
+            const selected = treeViewInstance?.selection[0]
+            if (selected && treeViewInstance && treeViewInstance.selection.length === 1) {
                 vscode.commands.executeCommand(
                     "setContext",
                     "CodeToolBox.enableCreateModule",
@@ -351,5 +388,6 @@ const openChatGPTView = (context: vscode.ExtensionContext) => {
                 )
             }
         }
-    })
+
+        treeViewBootstrapped = true
 }

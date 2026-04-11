@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { remake } from '../make-new/remake';
 import { refinementDiagnostics } from '../granularity-view/create-granularity-panel';
+import { getAiPath } from '../settings/settings';
 // --- 类型定义 ---
 
 enum LineStatus {
@@ -218,7 +219,22 @@ export const confirm = (context: vscode.ExtensionContext) => {
     const managers = new Map<string, DocumentStateManager>();
     let isJsonDisplayMode = true; 
 
-    const getManager = (doc: vscode.TextDocument): DocumentStateManager => {
+    const isInPseudocodesFolder = (filePath: string): boolean => {
+        try {
+            const pseudocodesRoot = path.resolve(getAiPath());
+            const targetPath = path.resolve(filePath);
+            const relativePath = path.relative(pseudocodesRoot, targetPath);
+            return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+        } catch {
+            return false;
+        }
+    };
+
+    const getManager = (doc: vscode.TextDocument): DocumentStateManager | undefined => {
+        if (!isInPseudocodesFolder(doc.fileName)) {
+            return undefined;
+        }
+
         const key = doc.fileName;
         if (!managers.has(key)) {
             managers.set(key, new DocumentStateManager(doc));
@@ -230,7 +246,11 @@ export const confirm = (context: vscode.ExtensionContext) => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
             const mgr = getManager(editor.document);
-            decorationController.update(editor, mgr);
+            if (mgr) {
+                decorationController.update(editor, mgr);
+            } else {
+                decorationController.clear(editor);
+            }
         }
     };
 
@@ -254,6 +274,10 @@ export const confirm = (context: vscode.ExtensionContext) => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
             const mgr = getManager(editor.document);
+            if (!mgr) {
+                return;
+            }
+
             let hasChanges = false;
 
             // 情况1：指定了行号 (通常是 UI 点击或代码调用)
@@ -297,7 +321,11 @@ export const confirm = (context: vscode.ExtensionContext) => {
             isJsonDisplayMode = true;
             decorationController.setEnabled(true);
             const mgr = getManager(editor.document);
-            decorationController.update(editor, mgr);
+            if (mgr) {
+                decorationController.update(editor, mgr);
+            } else {
+                decorationController.clear(editor);
+            }
         }
     });
 
@@ -306,6 +334,10 @@ export const confirm = (context: vscode.ExtensionContext) => {
     // 监听：文档变更
     vscode.workspace.onDidChangeTextDocument(event => {
         const mgr = getManager(event.document);
+        if (!mgr) {
+            return;
+        }
+
         mgr.applyChanges(event.contentChanges);
         if (isJsonDisplayMode && vscode.window.activeTextEditor?.document === event.document) {
             decorationController.update(vscode.window.activeTextEditor, mgr);
@@ -367,7 +399,7 @@ export const confirm = (context: vscode.ExtensionContext) => {
             const newPath = file.newUri.fsPath;
 
             // 这里假设插件主要处理 .py 或其他源码文件
-            if (!oldPath.endsWith('.json')) {
+            if (!oldPath.endsWith('.json') && isInPseudocodesFolder(oldPath) && isInPseudocodesFolder(newPath)) {
                 
                 // 计算旧的 JSON 路径
                 const oldHumanJsonPath = oldPath.replace(/\.[^.]+$/, '_py_human.json');

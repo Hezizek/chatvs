@@ -377,8 +377,8 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
             const treeProvider = DesignmentTreeDataProvider.getInstance()
             const treeNode = findNodeByAbsolutePath(treeProvider.localNodeTree, moduleAbsPath)
 
-            if (!treeNode || treeNode.type !== NodeType.Module || !treeNode.isLeaf()) {
-                vscode.window.showWarningMessage('仅支持编辑叶子模块描述。')
+            if (!treeNode || treeNode.type !== NodeType.Module) {
+                vscode.window.showWarningMessage('仅支持编辑模块节点描述。')
                 return
             }
 
@@ -466,6 +466,38 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
             await designmentService.deleteModuleNode(treeNode)
             disposeCurrentRecordAndCloseWebview()
             vscode.window.showInformationMessage('当前叶子模块已删除。')
+        })
+    )
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.deleteModuleByPath', async (payload) => {
+            assert(currentRecord, 'No usable record for granularity panel.')
+            const modulePath: string = payload?.modulePath || ''
+            if (!modulePath) return
+
+            const aiPath = settings.getAiPath()
+            const moduleAbsPath = path.join(aiPath, modulePath)
+            const treeProvider = DesignmentTreeDataProvider.getInstance()
+            const treeNode = findNodeByAbsolutePath(treeProvider.localNodeTree, moduleAbsPath)
+
+            if (!treeNode || treeNode.type !== NodeType.Module) {
+                vscode.window.showWarningMessage('未找到可删除的模块节点。')
+                return
+            }
+
+            const projectRootPath = getProjectPathFromNode(treeNode)
+            await designmentService.discardRefinementFromModulePath(projectRootPath, modulePath, true)
+            await designmentService.deleteModuleNode(treeNode)
+            await designmentService.resetFinalizedDesignState(projectRootPath)
+
+            if (currentRecord && path.resolve(currentRecord.getRootPath()) === path.resolve(moduleAbsPath)) {
+                disposeCurrentRecordAndCloseWebview()
+                return
+            }
+
+            if (currentRecord) {
+                currentRecord.fireUpdate()
+            }
         })
     )
 
@@ -868,7 +900,6 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
             }
 
             const seqIndex = leafModules.findIndex((mod: any) => mod.path === relativePath)
-            const isFirstModule = (seqIndex === 0)
             const isLastModule = (seqIndex === leafModules.length - 1)
 
 
@@ -880,41 +911,50 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                 try {
                     const rootPath = targetRecord.getRootPath()
 
-                    // 如果是第一个模块，先生成实际数据结构文件
-                    if (isFirstModule) {
-                        console.log('[generateCode] 检测到第一个模块，开始生成实际数据结构文件...')
-                        progress.report({ message: '正在初始化项目及生成数据结构...' });
-                        await initialProject(codeProjectRoot, language);
+                    // 无论当前是哪个模块，都先确保代码项目骨架存在。
+                    progress.report({ message: '正在初始化项目环境...' });
+                    await initialProject(codeProjectRoot, language);
 
-                        try {
-                            const { generateActualDataStructure } = await import('../tools/actual-datastructure-generator.js')
-                            const dsFilePath = await generateActualDataStructure(projectRootPath, codeProjectRoot, language, context)
+                    // 数据结构文件按需懒生成：若缺失则补生成，避免依赖“必须从第一个模块开始”。
+                    try {
+                        const { checkActualDataStructureExists, generateActualDataStructure } = await import('../tools/actual-datastructure-generator.js')
+                        let dsFilePath = checkActualDataStructureExists(codeProjectRoot, language)
 
-                            progress.report({ message: `数据结构已生成: ${path.basename(dsFilePath)}，继续生成代码...` });
+                        if (!dsFilePath) {
+                            progress.report({ message: '正在生成实际数据结构文件...' });
+                            dsFilePath = await generateActualDataStructure(projectRootPath, codeProjectRoot, language, context)
                             console.log('[generateCode] 实际数据结构文件生成成功:', dsFilePath)
-
-                            // 将生成的数据结构文件添加到树视图的 Common Data Structures 节点下
-                            const dsNode = projectHandler.getDataStructureNode()
-
-                            // 创建数据结构文件节点
-                            const dsFileNode = new FileNode(
-                                path.basename(dsFilePath),
-                                dsFilePath,
-                                NodeType.NormalFile,
-                                dsNode
-                            )
-
-                            // 添加到 Common Data Structures 节点的子节点中
-                            dsNode.children.push(dsFileNode)
-
-                            // 刷新树视图
-                            projectHandler.updateProjectTree()
-
-                        } catch (dsError) {
-                            console.error('[generateCode] 生成实际数据结构文件失败:', dsError)
-                            // 警告不作为致命错误，继续执行
-                            vscode.window.showWarningMessage(`生成实际数据结构文件失败: ${dsError}，将继续生成代码...`)
                         }
+
+                        if (dsFilePath) {
+                            // 将数据结构文件同步到树视图，避免重复插入同一路径节点。
+                            try {
+                                const dsNode = projectHandler.getDataStructureNode()
+                                const normalizedDsPath = path.resolve(dsFilePath)
+                                const existsInTree = dsNode.children.some(
+                                    child => path.resolve(child.absolutePath) === normalizedDsPath
+                                )
+
+                                if (!existsInTree) {
+                                    const dsFileNode = new FileNode(
+                                        path.basename(dsFilePath),
+                                        dsFilePath,
+                                        NodeType.NormalFile,
+                                        dsNode
+                                    )
+                                    dsNode.children.push(dsFileNode)
+                                    projectHandler.updateProjectTree()
+                                }
+                            } catch (treeSyncError) {
+                                console.warn('[generateCode] 数据结构节点同步到树失败:', treeSyncError)
+                            }
+
+                            progress.report({ message: `数据结构就绪: ${path.basename(dsFilePath)}，继续生成模块代码...` });
+                        }
+                    } catch (dsError) {
+                        console.error('[generateCode] 生成实际数据结构文件失败:', dsError)
+                        // 警告不作为致命错误，继续执行模块代码生成。
+                        vscode.window.showWarningMessage(`生成实际数据结构文件失败: ${dsError}。若提示 common_data_structures.json 不存在，请先在左侧项目树执行“完成设计”。本次将继续生成模块代码。`)
                     }
 
                     progress.report({ message: `正在生成模块代码...` });
