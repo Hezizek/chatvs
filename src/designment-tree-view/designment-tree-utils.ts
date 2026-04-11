@@ -47,12 +47,17 @@ function getProjectRootPath(element: DesignmentTreeNode): string {
 
 export async function doModuleDivision(
     parent: DirectoryNode, 
-    context: vscode.ExtensionContext
+    context: vscode.ExtensionContext,
+    options?: {
+        customPrompt?: string
+        candidateCount?: number
+    }
 ) {
 
     const aiPath = settings.getAiPath()
     const projectRootPath = getProjectRootPath(parent)
     const modulesPath = path.join(projectRootPath, 'modules.json')
+    const leafModulesPath = path.join(projectRootPath, 'leaf_modules.json')
     const projectName = path.basename(projectRootPath)
     const ongoingLeafModulesPath = path.join(projectRootPath, 'ongoing_leaf_modules.json')
     const currentContentPath = parent.getContentFilePath()
@@ -65,6 +70,7 @@ export async function doModuleDivision(
 
     let allModules = readJsonSafe(modulesPath);
     let ongoingLeafModules = readJsonSafe(ongoingLeafModulesPath)
+    let leafModules = readJsonSafe(leafModulesPath)
 
     if (isFirstLevel) {
         // 第一层：重置所有列表
@@ -96,48 +102,96 @@ export async function doModuleDivision(
         prompt = await openaiHelper.getModuleDivisionPrompt2(ongoingLeafModulesPath, requirementsPath, currentModuleName, context)
     }
 
-    const MAX_RETRIES = 3
-    let retryCount = 0
-    let result: any[] = []
-    let isValidResult = false
+    const customPrompt = options?.customPrompt?.trim() || ''
+    const candidateCount = Math.max(1, Math.min(options?.candidateCount ?? 3, 3))
 
-    while (retryCount < MAX_RETRIES && !isValidResult) {
-        if (retryCount > 0) {
-            console.log(`[ModuleDivision] 校验失败，正在进行第 ${retryCount} 次重试...`)
+    async function generateSingleCandidate(extraBias: string): Promise<any[] | null> {
+        const MAX_RETRIES = 3
+        let retryCount = 0
+        let tempPrompt = {
+            system: prompt.system,
+            user: prompt.user
         }
 
-        try {
-            // 使用 schema 验证，callOpenAIForJSON 内部会自动重试
-            const resultString = await openaiHelper.callOpenAIForJSON(
-                prompt.system, 
-                prompt.user,
-                ModulesArraySchema,
-                3
-            )
-            const cleanJson = resultString.replace(/```json/g, '').replace(/```/g, '').trim()
-            result = JSON.parse(cleanJson)
+        if (customPrompt) {
+            tempPrompt.user += `\n\n用户补充约束：\n${customPrompt}`
+        }
 
-            // 额外的前缀校验
-            const prefixValidation = validateModulePrefix(result, expectedPrefix)
-            if (prefixValidation.valid) {
-                isValidResult = true
-            } else {
-                console.warn(`[ModuleDivision] 校验失败: 存在模块名不符合前缀规范 "${expectedPrefix}"，不符合的模块: ${prefixValidation.invalidModules.join(', ')}`)
-                // 更新 prompt，让 LLM 知道问题
-                prompt.user += `\n\n注意：以下模块名称不符合要求，必须以 "${expectedPrefix}" 开头: ${prefixValidation.invalidModules.join(', ')}。请修正。`
+        if (extraBias) {
+            tempPrompt.user += `\n\n方案偏向：${extraBias}`
+        }
+
+        while (retryCount < MAX_RETRIES) {
+            if (retryCount > 0) {
+                console.log(`[ModuleDivision] 校验失败，正在进行第 ${retryCount} 次重试...`)
             }
-        } catch (e) {
-            console.error(`[ModuleDivision] 解析或调用出错 (Attempt ${retryCount + 1}):`, e)
+
+            try {
+                const resultString = await openaiHelper.callOpenAIForJSON(
+                    tempPrompt.system,
+                    tempPrompt.user,
+                    ModulesArraySchema,
+                    3
+                )
+                const cleanJson = resultString.replace(/```json/g, '').replace(/```/g, '').trim()
+                const parsedResult = JSON.parse(cleanJson)
+
+                const prefixValidation = validateModulePrefix(parsedResult, expectedPrefix)
+                if (prefixValidation.valid) {
+                    return parsedResult
+                }
+
+                console.warn(`[ModuleDivision] 校验失败: 存在模块名不符合前缀规范 "${expectedPrefix}"，不符合的模块: ${prefixValidation.invalidModules.join(', ')}`)
+                tempPrompt.user += `\n\n注意：以下模块名称不符合要求，必须以 "${expectedPrefix}" 开头: ${prefixValidation.invalidModules.join(', ')}。请修正。`
+            } catch (e) {
+                console.error(`[ModuleDivision] 解析或调用出错 (Attempt ${retryCount + 1}):`, e)
+            }
+
+            retryCount++
         }
 
-        if (!isValidResult) {
-            retryCount++
+        return null
+    }
+
+    const biasPrompts = [
+        '优先按职责边界拆分，模块粒度适中。',
+        '优先按数据流拆分，强调输入输出清晰。',
+        '优先按可测试性拆分，模块职责更单一。'
+    ]
+
+    const generatedCandidates: any[][] = []
+    for (let i = 0; i < candidateCount; i++) {
+        const candidate = await generateSingleCandidate(biasPrompts[i] || '')
+        if (candidate) {
+            generatedCandidates.push(candidate)
         }
     }
 
-    if (!isValidResult) {
-        // [修改] 抛出错误，以便上层捕获
+    if (generatedCandidates.length === 0) {
         throw new Error(`模块划分失败：LLM 未能生成符合命名规范("${expectedPrefix}*")的结果。`)
+    }
+
+    let result = generatedCandidates[0]
+    if (generatedCandidates.length > 1) {
+        const picked = await vscode.window.showQuickPick(
+            generatedCandidates.map((candidate, index) => ({
+                label: `候选方案 ${index + 1}`,
+                description: candidate.map((item: any) => item.name).join(' -> '),
+                detail: candidate.map((item: any) => `${item.name}: ${item.description}`).join(' | '),
+                candidate
+            })),
+            {
+                title: '选择子模块拆分方案',
+                placeHolder: '请选择一个候选方案用于替换当前模块',
+                ignoreFocusOut: true
+            }
+        )
+
+        if (!picked) {
+            throw new Error('用户取消了候选方案选择。')
+        }
+
+        result = picked.candidate
     }
 
     const pendingRenames: { src: string, dest: string }[] = [];
@@ -151,9 +205,14 @@ export async function doModuleDivision(
     }
 
     try {
+        await designmentService.resetFinalizedDesignState(projectRootPath)
+        // 结构发生变化后必须回到设计阶段，不应继续复用旧的 leaf_modules。
+        leafModules = []
+
+        let rawModuleName = ''
         // 如果不是第一层，现在划分成功了，才从叶子节点列表中移除“父模块”
         if (!isFirstLevel) {
-            const rawModuleName = path.dirname(path.relative(aiPath, currentContentPath))
+            rawModuleName = path.dirname(path.relative(aiPath, currentContentPath))
             
             // 使用 path 字段来匹配删除父模块
             ongoingLeafModules = ongoingLeafModules.filter((mod: any) => {
@@ -210,6 +269,45 @@ export async function doModuleDivision(
                 JSON.stringify(module, null, 2)
             )
         })
+
+        if (leafModules.length > 0) {
+            if (isFirstLevel) {
+                leafModules = result.map((module: any, index: number) => ({
+                    module_name: module.name,
+                    dependencies: module.dependencies || [],
+                    description: module.description || '',
+                    status: index === 0 ? 'ongoing' : 'pending',
+                    path: path.join(projectName, module.name.replace(/\./g, path.sep))
+                }))
+            } else {
+                const parentIndex = leafModules.findIndex((mod: any) => {
+                    const modPath = mod.path ? mod.path.replace(/[\/\\]/g, path.sep) : ''
+                    return modPath === rawModuleName
+                })
+
+                if (parentIndex >= 0) {
+                    const newChildren = result.map((module: any, index: number) => ({
+                        module_name: module.name,
+                        dependencies: module.dependencies || [],
+                        description: module.description || '',
+                        status: index === 0 ? 'ongoing' : 'pending',
+                        path: path.join(projectName, module.name.replace(/\./g, path.sep))
+                    }))
+
+                    leafModules.splice(parentIndex, 1, ...newChildren)
+                    leafModules.forEach((mod: any, index: number) => {
+                        if (index < parentIndex) {
+                            mod.status = 'completed'
+                        } else if (index === parentIndex) {
+                            mod.status = 'ongoing'
+                        } else {
+                            mod.status = 'pending'
+                        }
+                    })
+                }
+            }
+            stageJsonWrite(leafModulesPath, leafModules)
+        }
 
         stageJsonWrite(modulesPath, allModules)
         stageJsonWrite(ongoingLeafModulesPath, ongoingLeafModules)
@@ -316,9 +414,18 @@ export async function getLeafModules(
                 item.path,
                 'designment_info.txt'
             )
-            
-            if (!fs.existsSync(filePath)) {
-                fs.writeFileSync(filePath, JSON.stringify(item, null, 4), 'utf8')
+
+            fs.writeFileSync(filePath, JSON.stringify(item, null, 4), 'utf8')
+
+            const contentPath = path.join(aiPath, item.path, 'content.txt')
+            if (fs.existsSync(contentPath)) {
+                try {
+                    const currentContent = JSON.parse(fs.readFileSync(contentPath, 'utf8'))
+                    currentContent.description = item.description || currentContent.description || ''
+                    fs.writeFileSync(contentPath, JSON.stringify(currentContent, null, 2), 'utf8')
+                } catch {
+                    // content.txt is not guaranteed to be JSON in legacy projects.
+                }
             }
         })
 

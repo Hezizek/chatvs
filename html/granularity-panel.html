@@ -9,262 +9,423 @@
 </head>
 
 <body>
-    <div id="button-bar-container">
+    <div class="mode-bar">
+        <span class="mode-label">当前模式：</span>
+        <button type="button" id="mode-design" class="mode-btn active" onclick="setMode('design')">设计模式</button>
+        <button type="button" id="mode-refine" class="mode-btn" onclick="setMode('refine')">精化模式</button>
+    </div>
 
-        <!-- Displayed for ongoing modules. -->
-        <div id="button-bar-ongoing" class="button-bar-ongoing">
-            <button onclick="sendGlobalRefineCommand()">全局精化</button>
-            <select id="refine-level-select" title="选择精化级别" class="refine-level-select">
-                <option value="detailed" selected>较细</option>
-                <option value="coarse">较粗</option>
-            </select>
-            <button onclick="sendCommand('refinement.localRefine')">局部精化</button>
-            <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
-            <button onclick="sendGenerateCommand()">生成代码</button>
-            <select id="language-select" title="选择语言" class="language-select">
-                <option value="python">Python</option>
-                <option value="java">Java</option>
-                <option value="c++">C++</option>
-                <option value="c">C</option>
-                <option value="javascript">JavaScript</option>
-                <option value="typescript">TypeScript</option>
-                <option value="html">HTML</option>
-            </select>
+    <div id="design-workspace" class="module-container">
+        <div class="chain-title">设计树（可编辑）</div>
+        <div id="editable-tree-root" class="tree-root"></div>
+        <div class="sub-title">叶子拓扑顺序（依赖自动排序，只读）</div>
+        <div id="leaf-order-root" class="leaf-order-root"></div>
+        <div class="tree-hint">说明：设计阶段只改结构。通用数据结构提取是项目级一次性动作，请在左侧项目树执行“完成设计”。</div>
+    </div>
+
+    <div class="panel-shell">
+        <div id="design-panel" class="panel active">
+            <div class="panel-title">设计阶段</div>
+            <div class="toolbar">
+                <input id="design-custom-prompt" class="prompt-input" type="text" placeholder="拆分提示词（在树中点击拆分按钮时使用）" />
+                <button type="button" title="删除当前精化中的叶子模块" onclick="sendCommand('refinement.deleteCurrentModule')">删除当前模块</button>
+            </div>
+            <div id="design-stage-tip" class="panel-hint">
+                在上方树中点击“拆分/扩写”完成结构设计。完成后请先在左侧项目树执行“完成设计（提取数据结构 + 生成精化顺序）”，再进入精化阶段。
+            </div>
         </div>
 
-        <!-- Displayed for completed modules. -->
-        <div id="button-bar-completed" class="button-bar-completed">
-            <button onclick="sendCommand('refinement.rollback')">回退粒度</button>
-        </div>
-
-        <!-- Displayed for granularity 0 (JSON design stage). -->
-        <div id="button-bar-granularity0" class="button-bar-granularity0">
-            <button onclick="sendCommand('refinement.json2pse')">生成伪代码</button>
-        </div>
-
-        <!-- Displayed for pending modules. -->
-        <div id="button-bar-pending" class="button-bar-pending">
-            精化面板目前不可用。
+        <div id="refine-panel" class="panel">
+            <div class="panel-title">精化阶段（执行即保存）</div>
+            <div class="toolbar">
+                <select id="evolve-template-select" title="选择精化模板" class="refine-level-select" onchange="onTemplateChange()">
+                    <option value="globalDetailed" selected>细粒度精化</option>
+                    <option value="globalCoarse">粗粒度精化</option>
+                    <option value="local">局部精化</option>
+                    <option value="generateCode">生成代码</option>
+                </select>
+                <button type="button" class="btn-icon" title="预览当前模板的系统提示词" onclick="previewCurrentTemplate()">📖</button>
+                <!-- 代码语言下拉框：仅在"生成代码"模板时显示 -->
+                <select id="language-select" title="选择语言" class="language-select language-select--hidden">
+                    <option value="python">Python</option>
+                    <option value="java">Java</option>
+                    <option value="c++">C++</option>
+                    <option value="c">C</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="typescript">TypeScript</option>
+                    <option value="html">HTML</option>
+                </select>
+                <input id="evolve-custom-prompt" class="prompt-input" type="text" placeholder="输入精化提示词（可选）" />
+                <button type="button" onclick="sendEvolveCommand()">执行</button>
+                <button type="button" onclick="sendCommand('refinement.rollback')">回退粒度</button>
+                <button type="button" class="btn-confirm" title="完成当前模块精化，推进到下一模块" onclick="confirmDesignAndEvolution()">完成并推进</button>
+            </div>
+            <div class="panel-hint">精化阶段只关注当前模块内容演进。完成后点击<strong>完成并推进</strong>，当前模块标记为已完成并自动切换到下一待处理模块。</div>
         </div>
     </div>
 
-    <div class="module-container">
-        <div class="chain-title">模块顺序</div>
-        <div class="module-chain" id="module-chain-root"></div>
-    </div>
-
-    <div class="granularity-container">
-        <div class="chain-title">粒度历史</div>
+    <div class="history-container">
+        <div class="chain-title">当前模块精化历史</div>
         <div class="granularity-chain" id="chain-root"></div>
     </div>
 
     <script>
         const vscode = acquireVsCodeApi();
         const chainRoot = document.getElementById('chain-root');
+        const editableTreeRoot = document.getElementById('editable-tree-root');
+        const leafOrderRoot = document.getElementById('leaf-order-root');
+        const designWorkspace = document.getElementById('design-workspace');
+        const designStageTip = document.getElementById('design-stage-tip');
 
-        // [新增] 获取模块容器 DOM
-        const moduleChainRoot = document.getElementById('module-chain-root');
+        let editableModules = [];
+        let currentModuleName = '';
+        let currentMode = 'design';
+        let projectMeta = { name: 'Project', description: '' };
 
-        // [新增] 获取 button bar 容器 DOM 以控制显示
-        const buttonBarOngoing = document.getElementById('button-bar-ongoing');
-        const buttonBarCompleted = document.getElementById('button-bar-completed');
-        const buttonBarGranularity0 = document.getElementById('button-bar-granularity0');
-        const buttonBarPending = document.getElementById('button-bar-pending');
-
-        function sendCommand(commandId) {
-            vscode.postMessage({ type: 'executeCommand', commandId: commandId });
+        function sendCommand(commandId, payload) {
+            vscode.postMessage({ type: 'executeCommand', commandId, payload });
         }
 
-        // 专门用于发送全局精化命令的函数，携带精化级别参数
-        function sendGlobalRefineCommand() {
-            const select = document.getElementById('refine-level-select');
-            const refineLevel = select.value;
-            vscode.postMessage({
-                type: 'executeCommand',
-                commandId: 'refinement.globalRefine',
-                payload: { refineLevel: refineLevel }
-            });
+        function setMode(mode) {
+            currentMode = mode;
+            document.body.setAttribute('data-mode', mode);
+            document.getElementById('mode-design').classList.toggle('active', mode === 'design');
+            document.getElementById('mode-refine').classList.toggle('active', mode === 'refine');
+            document.getElementById('design-panel').classList.toggle('active', mode === 'design');
+            document.getElementById('refine-panel').classList.toggle('active', mode === 'refine');
+            designWorkspace.style.display = mode === 'design' ? 'flex' : 'none';
         }
 
-        // 专门用于发送生成代码命令的函数，携带语言参数
-        function sendGenerateCommand() {
-            const select = document.getElementById('language-select');
-            const language = select.value;
-            vscode.postMessage({
-                type: 'executeCommand',
-                commandId: 'refinement.generateCode',
-                payload: { language: language }
-            });
+        function previewCurrentTemplate() {
+            const template = document.getElementById('evolve-template-select').value;
+            sendCommand('refinement.previewTemplate', { template });
         }
 
-        window.addEventListener('message', event => {
-            const msg = event.data;
-            switch (msg.type) {
-                case 'updateView':
-                    const { nodes, moduleSequence, currentModule, moduleStatus, currentGranularity } = msg.data;
-                    renderButtonBar(nodes, moduleStatus, currentGranularity);  // 根据模块状态和当前粒度判断显示哪个按钮组
-                    renderChain(nodes);                                 // 渲染粒度历史
-                    renderModuleChain(moduleSequence, currentModule);   // 渲染模块顺序
-                    break;
-                default:
-                    console.error(`Invalid message type from backend: ${msg.type}`);
+        function onTemplateChange() {
+            const template = document.getElementById('evolve-template-select').value;
+            const langSelect = document.getElementById('language-select');
+            if (template === 'generateCode') {
+                langSelect.classList.remove('language-select--hidden');
+            } else {
+                langSelect.classList.add('language-select--hidden');
             }
-        });
+        }
 
-        // [新增] 渲染模块顺序链表的函数
-        function renderModuleChain(sequence, currentModule) {
-            moduleChainRoot.innerHTML = '';
+        function sendEvolveCommand() {
+            const template = document.getElementById('evolve-template-select').value;
+            const language = document.getElementById('language-select').value;
+            const customPrompt = (document.getElementById('evolve-custom-prompt').value || '').trim();
+            sendCommand('refinement.evolve', { template, language, customPrompt });
+            setMode('refine');
+        }
 
-            if (!sequence || sequence.length === 0) {
-                moduleChainRoot.innerHTML = '<span style="color:var(--vscode-descriptionForeground); font-size:0.9em;">(无 seq.json 配置)</span>';
+        function confirmDesignAndEvolution() {
+            sendCommand('refinement.confirmEvolution');
+        }
+
+        function buildModuleTree(modules) {
+            const root = { name: '__root__', fullName: '', children: {} };
+
+            (modules || []).forEach((module) => {
+                const nameParts = String(module.name || '').split('.').filter(Boolean);
+                let cursor = root;
+                let acc = [];
+                nameParts.forEach((part, idx) => {
+                    acc.push(part);
+                    const fullName = acc.join('.');
+                    if (!cursor.children[part]) {
+                        cursor.children[part] = {
+                            name: part,
+                            fullName,
+                            children: {},
+                            module: null
+                        };
+                    }
+                    cursor = cursor.children[part];
+                    if (idx === nameParts.length - 1) {
+                        cursor.module = module;
+                    }
+                });
+            });
+
+            return root;
+        }
+
+        function createRootNode(readonlyMode) {
+            const rootNode = document.createElement('div');
+            rootNode.className = 'tree-node root-node';
+            rootNode.innerHTML = `
+                <div class="tree-node-header ${readonlyMode ? 'readonly' : ''}">
+                    <div class="tree-node-title">${escapeHtml(projectMeta.name || 'Project')}</div>
+                    <span class="root-badge">Root</span>
+                </div>
+                <div class="tree-node-desc">${escapeHtml(projectMeta.description || '(无项目描述)')}</div>
+            `;
+            return rootNode;
+        }
+
+        function renderTreeNode(node, readonlyMode) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'tree-node';
+
+            const hasChildren = Object.keys(node.children).length > 0;
+            const module = node.module;
+            const isLeafModule = !!module;
+            const desc = module ? (module.description || '') : '';
+            const status = module ? (module.status || 'pending') : '';
+
+            const header = document.createElement('div');
+            header.className = 'tree-node-header';
+            if (module && module.name === currentModuleName) {
+                header.classList.add('active');
+            }
+
+            if (module) {
+                header.style.cursor = 'pointer';
+                header.onclick = () => {
+                    currentModuleName = module.name;
+                    renderTree(editableTreeRoot, editableModules, false, '(当前无可编辑模块)');
+                    renderLeafOrderEditor();
+                    sendCommand('refinement.switchModule', { modulePath: module.path });
+                };
+            }
+
+            const title = document.createElement('div');
+            title.className = 'tree-node-title';
+            title.textContent = node.fullName || node.name;
+            header.appendChild(title);
+
+            if (module) {
+                const badge = document.createElement('span');
+                badge.className = `status-badge status-${escapeHtml(status)}`;
+                badge.textContent = status;
+                header.appendChild(badge);
+            }
+
+            wrapper.appendChild(header);
+
+            if (module) {
+                const descDiv = document.createElement('div');
+                descDiv.className = 'tree-node-desc';
+                descDiv.textContent = desc || '(无描述)';
+                wrapper.appendChild(descDiv);
+            }
+
+            if (!readonlyMode && isLeafModule) {
+                const actions = document.createElement('div');
+                actions.className = 'tree-actions';
+
+                const splitBtn = document.createElement('button');
+                splitBtn.className = 'mini-btn';
+                splitBtn.title = '将该模块拆分为子模块';
+                splitBtn.textContent = '拆分';
+                splitBtn.onclick = () => {
+                    const customPrompt = (document.getElementById('design-custom-prompt').value || '').trim();
+                    sendCommand('refinement.splitModuleByPath', { modulePath: module.path, customPrompt });
+                };
+                actions.appendChild(splitBtn);
+
+                const createBtn = document.createElement('button');
+                createBtn.className = 'mini-btn';
+                createBtn.title = '新增子模块';
+                createBtn.textContent = '新增';
+                createBtn.onclick = () => {
+                    const moduleName = (window.prompt(`新增 ${module.name} 的子模块名称`) || '').trim();
+                    if (!moduleName) return;
+                    const moduleDescription = (window.prompt(`新增模块 ${moduleName} 的描述（可选）`) || '').trim();
+                    sendCommand('refinement.createChildModuleByPath', {
+                        modulePath: module.path,
+                        moduleName,
+                        moduleDescription
+                    });
+                };
+                actions.appendChild(createBtn);
+
+                const editBtn = document.createElement('button');
+                editBtn.className = 'mini-btn';
+                editBtn.textContent = '改描述';
+                editBtn.onclick = () => {
+                    const newDesc = window.prompt(`编辑 ${module.name} 的描述`, module.description || '');
+                    if (newDesc === null) return;
+                    sendCommand('refinement.updateModuleDescriptionByPath', {
+                        modulePath: module.path,
+                        description: newDesc
+                    });
+                };
+                actions.appendChild(editBtn);
+
+                const expandBtn = document.createElement('button');
+                expandBtn.className = 'mini-btn';
+                expandBtn.title = '用 AI 将简述扩写为详尽的职责描述';
+                expandBtn.textContent = '✎ 扩写';
+                expandBtn.onclick = () => {
+                    sendCommand('refinement.expandDescription', { modulePath: module.path });
+                };
+                actions.appendChild(expandBtn);
+
+                wrapper.appendChild(actions);
+            }
+
+            if (hasChildren) {
+                const childrenWrap = document.createElement('div');
+                childrenWrap.className = 'tree-children';
+                const sortedChildren = Object.values(node.children)
+                    .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+                sortedChildren.forEach((child, childIndex) => {
+                    const childNode = renderTreeNode(child, readonlyMode)
+                    const branch = document.createElement('div')
+                    branch.className = 'tree-branch'
+                    if (childIndex === sortedChildren.length - 1) {
+                        branch.classList.add('last')
+                    }
+                    branch.appendChild(childNode)
+                    childrenWrap.appendChild(branch)
+                });
+                wrapper.appendChild(childrenWrap);
+            }
+
+            return wrapper;
+        }
+
+        function renderTree(rootEl, modules, readonlyMode, emptyText) {
+            rootEl.innerHTML = '';
+            rootEl.appendChild(createRootNode(readonlyMode));
+
+            if (!modules || modules.length === 0) {
+                const tip = document.createElement('span');
+                tip.className = 'empty-tip';
+                tip.textContent = emptyText;
+                rootEl.appendChild(tip);
                 return;
             }
 
-            sequence.forEach((moduleName, index) => {
-                const nodeDiv = document.createElement('div');
-                nodeDiv.className = 'module-node'; // 使用新的 CSS 类
+            const tree = buildModuleTree(modules);
+            const branch = document.createElement('div');
+            branch.className = 'tree-children';
+            const sortedChildren = Object.values(tree.children)
+                .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+            sortedChildren.forEach((child, childIndex) => {
+                const childNode = renderTreeNode(child, readonlyMode)
+                const childBranch = document.createElement('div')
+                childBranch.className = 'tree-branch'
+                if (childIndex === sortedChildren.length - 1) {
+                    childBranch.classList.add('last')
+                }
+                childBranch.appendChild(childNode)
+                branch.appendChild(childBranch)
+            });
+            rootEl.appendChild(branch);
+        }
 
-                nodeDiv.title = moduleName;
+        // 拓扑顺序为只读列表，顺序由后端依赖关系自动计算，不支持手动拖拽
+        function renderLeafOrderEditor() {
+            leafOrderRoot.innerHTML = '';
+            if (!editableModules || editableModules.length === 0) {
+                leafOrderRoot.innerHTML = '<span class="empty-tip">(尚无叶子模块)</span>';
+                return;
+            }
 
-                nodeDiv.innerHTML = `<div class="node-desc">${escapeHtml(moduleName)}</div>`;
+            editableModules.forEach((module, index) => {
+                const row = document.createElement('div');
+                row.className = 'leaf-row';
 
-                // 高亮当前模块
-                if (moduleName === currentModule) {
-                    nodeDiv.classList.add('active');
+                if (module.name === currentModuleName) {
+                    row.classList.add('active');
                 }
 
-                // 点击跳转
-                nodeDiv.onclick = () => {
-                    // 如果点击的不是当前模块，则发送跳转命令
-                    if (moduleName !== currentModule) {
-                        vscode.postMessage({
-                            type: 'executeCommand',
-                            commandId: 'refinement.switchModule',
-                            payload: { moduleName: moduleName }
-                        });
-                    }
-                };
+                row.innerHTML = `
+                    <span class="leaf-row-index">${index + 1}.</span>
+                    <div class="leaf-row-body">
+                        <div class="leaf-row-title">${escapeHtml(module.name)}</div>
+                        <div class="leaf-row-desc">${escapeHtml(module.description || '')}</div>
+                    </div>
+                `;
 
-                moduleChainRoot.appendChild(nodeDiv);
-
-                // 添加箭头
-                if (index < sequence.length - 1) {
-                    const arrowSpan = document.createElement('span');
-                    arrowSpan.className = 'arrow';
-                    arrowSpan.textContent = '➜';
-                    moduleChainRoot.appendChild(arrowSpan);
-                }
+                leafOrderRoot.appendChild(row);
             });
         }
 
-        // [核心修改] 渲染函数
-        // src/extension.ts 中的 renderChain 函数
-
         function renderChain(nodes) {
             chainRoot.innerHTML = '';
-
             nodes.forEach((node, index) => {
                 const nodeDiv = document.createElement('div');
                 nodeDiv.className = 'granularity-node';
-
-                // 1. [需求实现] 鼠标悬浮显示全部内容
-                // title 属性是 HTML 原生特性，会自动产生一个跟随鼠标的文本提示框
                 nodeDiv.title = node.description;
-
-                // 2. [需求实现] 只显示 description，不再显示 "粒度 n"
-                // 如果描述为空，为了防止空方块，可以显示一个默认占位符
-                const displayText = node.description || ('Step ' + node.index);
-
-                nodeDiv.innerHTML = '<div class="node-desc">' + escapeHtml(displayText) + '</div>';
+                nodeDiv.innerHTML = '<div class="node-desc center">' + escapeHtml(node.description || ('Step ' + node.index)) + '</div>';
 
                 if (node.isActive) {
                     nodeDiv.classList.add('active');
                 }
 
-                nodeDiv.onclick = () => {
-                    vscode.postMessage({
-                        type: 'executeCommand',
-                        commandId: 'refinement.switchGranularity',
-                        payload: { index: index }
-                    });
-                };
-
+                nodeDiv.onclick = () => sendCommand('refinement.switchGranularity', { index });
                 chainRoot.appendChild(nodeDiv);
-
-                if (index < nodes.length - 1) {
-                    const arrowSpan = document.createElement('span');
-                    arrowSpan.className = 'arrow';
-                    arrowSpan.textContent = '➜';
-                    chainRoot.appendChild(arrowSpan);
-                }
             });
         }
 
-        function renderButtonBar(nodes, moduleStatus, currentGranularity) {
-            // If no active node, hide all buttons.
-            const hasActive = nodes.some(node => node.isActive);
+        function updateModeAvailability(moduleStatus, designReady) {
+            const designBtn = document.getElementById('mode-design');
+            const refineBtn = document.getElementById('mode-refine');
+            const canRefine = !!designReady && moduleStatus !== 'pending';
+            refineBtn.disabled = !canRefine;
+            designBtn.disabled = false;
 
-            if (!hasActive) {
-                updateButtonBar('none', 'none', 'none', 'block');
-                buttonBarPending.textContent = '没有选中的粒度。';
-                return;
+            if (!designReady) {
+                designStageTip.textContent = '尚未完成设计收尾：请在左侧项目树执行“完成设计（提取数据结构 + 生成精化顺序）”，随后再进入精化。';
+            } else {
+                designStageTip.textContent = '设计收尾已完成，可以切换到精化模式逐模块执行；精化确认按钮在精化面板内。';
             }
 
-            // 找到当前激活的节点
-            const activeNodeIndex = nodes.findIndex(node => node.isActive);
-            const isLastNode = (activeNodeIndex === nodes.length - 1);
-
-            // 如果用户查看的不是最后一个粒度（即在查看历史粒度），只显示"回退粒度"按钮
-            if (!isLastNode) {
-                updateButtonBar('none', 'flex', 'none', 'none');
-                return;
-            }
-
-            // 以下逻辑仅在用户查看最后一个粒度时才执行
-
-            // 如果当前粒度为0、模块状态为ongoing、且是最后一个节点，只显示json2pse按钮
-            if (currentGranularity === 0 && moduleStatus === 'ongoing') {
-                updateButtonBar('none', 'none', 'flex', 'none');
-                return;
-            }
-
-            const displayMap = {
-                'ongoing':      ['flex', 'none', 'none', 'none'],
-                'completed':    ['none', 'flex', 'none', 'none'],
-                'pending':      ['none', 'none', 'none', 'block']
-            };
-
-            const cfg = displayMap[moduleStatus]
-            if (!cfg) {
-                console.error(`Invalid module status from backend: ${moduleStatus}.`);
-                return;
-            } 
-            
-            updateButtonBar(cfg[0], cfg[1], cfg[2], cfg[3]);
-
-            if (moduleStatus === 'pending') {
-                buttonBarPending.textContent = '请先完成前置模块的精化和代码生成。';
+            if (!canRefine && currentMode === 'refine') {
+                setMode('design');
             }
         }
 
-        function updateButtonBar(ongoingBarState, completedBarState, granularity0BarState, pendingBarState) {
-            buttonBarOngoing.style.display = ongoingBarState;
-            buttonBarCompleted.style.display = completedBarState;
-            buttonBarGranularity0.style.display = granularity0BarState;
-            buttonBarPending.style.display = pendingBarState;
-        }
-
-        // 简单的 HTML 转义函数，防止描述中包含 < > 等特殊字符破坏布局
         function escapeHtml(text) {
             if (!text) return '';
-            return text
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         }
 
+        window.addEventListener('message', (event) => {
+            const msg = event.data;
+            if (msg.type !== 'updateView') {
+                return;
+            }
+
+            const {
+                nodes,
+                moduleSequence,
+                projectName,
+                projectDescription,
+                currentModule,
+                moduleStatus,
+                designReady,
+                moduleNotFound
+            } = msg.data;
+
+            projectMeta = {
+                name: projectName || 'Project',
+                description: projectDescription || ''
+            };
+            currentModuleName = currentModule || '';
+            editableModules = moduleSequence || [];
+
+            updateModeAvailability(moduleStatus || 'pending', !!designReady);
+            renderTree(editableTreeRoot, editableModules, false, '(当前无可编辑模块)');
+            renderLeafOrderEditor();
+            renderChain(nodes || []);
+
+            // 若模块已被拆分或不存在，显示提示信息
+            if (moduleNotFound) {
+                chainRoot.innerHTML = '<span class="empty-tip">当前模块已被拆分，请在左侧树中选择子模块继续操作。</span>';
+            }
+        });
+
+        setMode('design');
         vscode.postMessage({ type: 'webviewReady' });
     </script>
 </body>

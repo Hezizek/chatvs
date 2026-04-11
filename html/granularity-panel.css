@@ -2,7 +2,7 @@ html, body {
     height: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden;    /* 禁止整个页面滚动，为了固定头部 */
+    overflow: hidden;
 }
 
 body {
@@ -10,193 +10,356 @@ body {
     flex-direction: column;
     padding: 10px;
     box-sizing: border-box;
-    
-    /* 基础字体与颜色 */
     color: var(--vscode-editor-foreground);
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
     background-color: var(--vscode-editor-background);
-    gap: 15px;
-}
-
-.button-bar-ongoing, .button-bar-completed, .button-bar-granularity0 {
-    flex-shrink: 0;      /* 禁止被压缩，确保始终完整显示 */
-    display: none;
     gap: 10px;
-    flex-wrap: wrap;     /* 按钮本身也可以换行，防止窗口太窄 */
-    
-    /* 底部分割线 */
-    padding-bottom: 5px;
-    border-bottom: 1px solid var(--vscode-panel-border);
 }
 
-.button-bar-pending {
-    padding: 8px;
+body[data-mode="refine"] #design-workspace {
+    display: none;
+}
+
+body[data-mode="design"] .history-container {
+    display: none;
+}
+
+.mode-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mode-label {
+    font-size: 0.85em;
     color: var(--vscode-descriptionForeground);
-    padding-bottom: 5px;
-    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.mode-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+}
+
+.mode-btn.active {
+    border-color: var(--vscode-focusBorder);
+    background: var(--vscode-list-activeSelectionBackground);
+}
+
+.mode-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.module-container,
+.history-container,
+.panel-shell {
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.chain-title {
+    font-size: 0.9em;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.sub-title {
+    margin-top: 8px;
+    margin-bottom: 4px;
+    font-size: 0.82em;
+    color: var(--vscode-descriptionForeground);
+}
+
+.tree-root,
+.leaf-order-root {
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.tree-node {
+    margin-bottom: 4px;
+    position: relative;
+}
+
+.tree-node-header {
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 5px 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    background: var(--vscode-editor-background);
+}
+
+.tree-node-header.active {
+    border-color: var(--vscode-focusBorder);
+    background-color: var(--vscode-list-activeSelectionBackground);
+}
+
+.tree-node-title {
+    font-size: 0.84em;
+    font-weight: 600;
+    line-height: 1.3;
+    word-break: break-all;
+}
+
+.tree-node-desc {
+    font-size: 0.78em;
+    color: var(--vscode-descriptionForeground);
+    padding: 3px 8px;
+}
+
+.tree-actions {
+    display: flex;
+    gap: 6px;
+    padding: 0 8px 4px;
+}
+
+.tree-children {
+    margin-left: 4px;
+    padding-left: 10px;
+}
+
+.tree-branch {
+    position: relative;
+    margin-left: 10px;
+    padding-left: 12px;
+}
+
+.tree-branch::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    left: 0;
+    border-left: 1px solid var(--vscode-panel-border);
+}
+
+.tree-branch::after {
+    content: '';
+    position: absolute;
+    top: 14px;
+    left: 0;
+    width: 10px;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+
+.tree-branch.last::before {
+    bottom: calc(100% - 14px);
+}
+
+.root-node {
+    margin-bottom: 8px;
+}
+
+.root-badge {
+    font-size: 0.7em;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 10px;
+    padding: 1px 6px;
+}
+
+.status-badge {
+    font-size: 0.72em;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 10px;
+    padding: 1px 6px;
+    white-space: nowrap;
+}
+
+.status-completed {
+    color: var(--vscode-testing-iconPassed);
+}
+
+.status-ongoing {
+    color: var(--vscode-testing-iconQueued);
+}
+
+.status-pending {
+    color: var(--vscode-descriptionForeground);
+}
+
+.leaf-row {
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 5px 8px;
+    margin-bottom: 4px;
+    background: var(--vscode-editor-background);
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.leaf-row.active {
+    border-color: var(--vscode-focusBorder);
+}
+
+.leaf-row-index {
+    font-size: 0.78em;
+    color: var(--vscode-descriptionForeground);
+    min-width: 16px;
+    padding-top: 2px;
+}
+
+.leaf-row-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.leaf-row-title {
+    font-size: 0.82em;
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.leaf-row-desc {
+    font-size: 0.76em;
+    color: var(--vscode-descriptionForeground);
+    margin-top: 2px;
+}
+
+.panel {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.panel.active {
+    display: flex;
+}
+
+.panel-title {
+    font-size: 0.88em;
+    font-weight: 600;
+}
+
+.panel-hint {
+    font-size: 0.78em;
+    color: var(--vscode-descriptionForeground);
+}
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tree-hint {
+    font-size: 0.76em;
+    color: var(--vscode-descriptionForeground);
+    margin-top: 4px;
 }
 
 button {
     background-color: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
     border: none;
-    padding: 6px 14px;
-    font-family: inherit;
-    cursor: pointer;
-    outline: none;
     border-radius: 2px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-family: inherit;
 }
 
 button:hover {
     background-color: var(--vscode-button-hoverBackground);
 }
 
-.language-select, .refine-level-select {
+.language-select--hidden {
+    display: none;
+}
+
+.language-select,
+.refine-level-select {
     background-color: var(--vscode-dropdown-background);
     color: var(--vscode-dropdown-foreground);
     border: 1px solid var(--vscode-dropdown-border);
-    padding: 4px 8px;
-    font-family: inherit;
-    font-size: inherit;
-    cursor: pointer;
-    outline: none;
     border-radius: 2px;
+    padding: 4px 8px;
 }
 
-.language-select:hover, .refine-level-select:hover {
-    background-color: var(--vscode-dropdown-listBackground);
+.prompt-input {
+    min-width: 220px;
+    flex: 1;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 2px;
+    padding: 4px 8px;
 }
 
-.granularity-container {
-    flex: 1;             /* 霸占剩余的所有垂直空间 */
-    overflow-y: auto;    /* 关键：内容超出时，只在这个区域内垂直滚动 */
-    min-height: 0;       /* 修复 Flexbox 嵌套滚动条的常见 bug */
-    
-    display: flex;
-    flex-direction: column;
+.mini-btn {
+    font-size: 0.74em;
+    padding: 3px 6px;
 }
 
-.chain-title {
-    margin-top: 0;
-    margin-bottom: 10px;
+.btn-confirm {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    font-weight: 600;
+}
+
+.btn-icon {
+    padding: 4px 6px;
     font-size: 0.9em;
-    font-weight: bold;
-    opacity: 0.8;
-    flex-shrink: 0;
+    line-height: 1;
+    background: transparent;
+    border: 1px solid var(--vscode-panel-border);
+    color: var(--vscode-editor-foreground);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.btn-icon:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.empty-tip {
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.88em;
 }
 
 .granularity-chain {
     display: flex;
-    flex-wrap: wrap;     /* 关键：允许节点换行 */
-    align-items: center; /* 垂直居中对齐 */
-    gap: 10px;           /* 节点之间的间距 */
-    
-    padding-bottom: 20px; /* 底部留一点余量，防止滚动到底部太贴边 */
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .granularity-node {
-    width: 120px;              
-    height: 40px;              
-    flex-shrink: 0;            
-
+    width: 130px;
+    min-height: 40px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    
-    padding: 0 10px;
-    border: 1px solid var(--vscode-panel-border);
-    background-color: var(--vscode-editor-background);
-    color: var(--vscode-descriptionForeground);
-    border-radius: 4px;
+    padding: 0 8px;
     cursor: pointer;
-    transition: all 0.2s;
 }
 
 .granularity-node:hover {
-    background-color: var(--vscode-list-hoverBackground);
     border-color: var(--vscode-focusBorder);
+    background-color: var(--vscode-list-hoverBackground);
 }
 
 .granularity-node.active {
     border-color: var(--vscode-focusBorder);
-    color: var(--vscode-foreground);
-    font-weight: bold;
     background-color: var(--vscode-list-activeSelectionBackground);
 }
 
-.node-desc {
-    font-size: 0.9em;
-    width: 100%;
+.node-desc.center {
     text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* --- 箭头样式 --- */
-.arrow {
+    font-size: 0.82em;
     color: var(--vscode-descriptionForeground);
-    font-size: 1.2em;
-    flex-shrink: 0;
-    
-    /* 微调箭头位置，使其在换行时也不至于太乱 */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 40px; 
-}
-
-/* [新增] 模块容器样式 */
-.module-container {
-    /* 不设置 flex: 1，让它根据内容自适应高度，不霸占粒度历史的空间 */
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    border-bottom: 1px dashed var(--vscode-panel-border); /* 加个虚线分隔 */
-    padding-bottom: 10px;
-}
-
-.module-chain {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px;
-    /* 允许横向滚动，如果模块太多的话 */
-    overflow-x: auto; 
-}
-
-/* [新增] 模块节点样式 (基于 .granularity-node 微调) */
-.module-node {
-    width: 100px;              
-    height: 30px; /* 稍微矮一点 */
-    flex-shrink: 0;            
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    
-    padding: 0 5px;
-    border: 1px solid var(--vscode-panel-border);
-    background-color: var(--vscode-editor-background);
-    color: var(--vscode-descriptionForeground);
-    border-radius: 15px; /* 圆角更大，以此区分 */
-    cursor: pointer;
-    transition: all 0.2s;
-    font-size: 0.85em;
-}
-
-.module-node:hover {
-    background-color: var(--vscode-list-hoverBackground);
-    border-color: var(--vscode-focusBorder);
-}
-
-/* 当前激活的模块 */
-.module-node.active {
-    border-color: var(--vscode-focusBorder);
-    color: var(--vscode-foreground);
-    font-weight: bold;
-    /* 使用稍微不同的背景色，例如 badge 的背景色 */
-    background-color: var(--vscode-badge-background);
-    color: var(--vscode-badge-foreground);
 }

@@ -13,6 +13,9 @@ import { writeModule } from '../tools/module-writer'
 import { updateRootLaunchConfig, removeRootLaunchConfig } from '../tools/launch-config-updater'
 import { encoding_for_model } from "@dqbd/tiktoken";
 import { FileNode, NodeType } from '../designment-tree-view/designment-tree-data-provider'
+import * as designmentService from '../designment-tree-view/designment-tree-service'
+import { doModuleDivision } from '../designment-tree-view/designment-tree-utils'
+import { DesignmentTreeDataProvider, DirectoryNode } from '../designment-tree-view/designment-tree-data-provider'
 
 
 export let currentRecord: GranularityRecord | null = null
@@ -26,6 +29,124 @@ const refineHighlightType = vscode.window.createTextEditorDecorationType({
 })
 
 export const refinementDiagnostics = vscode.languages.createDiagnosticCollection('refinement');
+const CONFIRMED_LEAF_MODULES_FILE = 'confirmed_leaf_modules.json'
+
+function appendCustomPrompt(basePrompt: string, customPrompt?: string): string {
+    const cleaned = (customPrompt || '').trim()
+    if (!cleaned) {
+        return basePrompt
+    }
+
+    return `${basePrompt}\n\n# User Extra Instruction\n${cleaned}`
+}
+
+function getModuleName(mod: any): string {
+    return mod.name || mod.module_name || ''
+}
+
+function findNodeByAbsolutePath(nodes: any[], absolutePath: string): DirectoryNode | null {
+    const normalizedTarget = path.resolve(absolutePath)
+    for (const node of nodes) {
+        if (node instanceof DirectoryNode && path.resolve(node.absolutePath) === normalizedTarget) {
+            return node
+        }
+        if (node instanceof DirectoryNode && node.children.length > 0) {
+            const found = findNodeByAbsolutePath(node.children, absolutePath)
+            if (found) return found
+        }
+    }
+    return null
+}
+
+    function getProjectPathFromNode(node: DirectoryNode): string {
+        let iter: DirectoryNode = node
+        while (iter.parent) {
+            iter = iter.parent
+        }
+        return iter.absolutePath
+    }
+
+function getCurrentModuleMeta(record: GranularityRecord): {
+    projectRootPath: string
+    relativePath: string
+    seqIndex: number
+    status: 'completed' | 'ongoing' | 'pending'
+    allCompleted: boolean
+} {
+    const projectRootPath = record.projectHandler.rootPath
+    const rootPath = record.getRootPath()
+    const aiPath = settings.getAiPath()
+    const relativePath = path.relative(aiPath, rootPath)
+    const leafModulesPath = path.join(projectRootPath, 'leaf_modules.json')
+
+    if (fs.existsSync(leafModulesPath)) {
+        const leafModules = JSON.parse(fs.readFileSync(leafModulesPath, 'utf8')) as any[]
+        const seqIndex = leafModules.findIndex((mod: any) => mod.path === relativePath)
+        const status = seqIndex >= 0 ? (leafModules[seqIndex].status || 'pending') : 'pending'
+        const allCompleted = leafModules.length > 0 && leafModules.every((mod: any) => mod.status === 'completed')
+        return { projectRootPath, relativePath, seqIndex, status, allCompleted }
+    }
+
+    return { projectRootPath, relativePath, seqIndex: -1, status: 'pending', allCompleted: false }
+}
+
+async function prepareModuleMutation(record: GranularityRecord): Promise<boolean> {
+    const meta = getCurrentModuleMeta(record)
+    if (meta.seqIndex < 0) {
+        vscode.window.showWarningMessage('当前模块不在精化顺序中，无法执行精化。')
+        return false
+    }
+
+    if (meta.status === 'pending') {
+        vscode.window.showWarningMessage('请先完成前置模块确认，再精化当前模块。')
+        return false
+    }
+
+    if (meta.status === 'completed') {
+        await designmentService.discardRefinementFromModulePath(meta.projectRootPath, meta.relativePath, false)
+    }
+
+    return true
+}
+
+/**
+ * 拆分指定绝对路径的叶子模块。
+ * 拆分后当前精化面板指向该模块的 Record 失效，因此关闭面板并提示用户重新选择子节点。
+ */
+async function splitModuleByAbsPath(
+    moduleAbsPath: string,
+    customPrompt: string,
+    context: vscode.ExtensionContext
+): Promise<void> {
+    const treeProvider = DesignmentTreeDataProvider.getInstance()
+    const treeNode = findNodeByAbsolutePath(treeProvider.localNodeTree, moduleAbsPath)
+
+    if (!treeNode || treeNode.type !== NodeType.Module || !treeNode.isLeaf()) {
+        vscode.window.showWarningMessage('当前节点不是可拆分的叶子模块。')
+        return
+    }
+
+    treeProvider.switchBannedStateForWholeProject(treeNode)
+    try {
+        await doModuleDivision(treeNode, context, { customPrompt, candidateCount: 3 })
+        await designmentService.discardRefinementFromModule(treeNode)
+        treeProvider.refresh(treeNode)
+
+        // 拆分后当前面板已失效，关闭并提示用户选择子节点
+        if (currentRecord && path.resolve(currentRecord.getRootPath()) === path.resolve(moduleAbsPath)) {
+            disposeCurrentRecordAndCloseWebview()
+        } else if (currentRecord) {
+            // 当前面板是其他模块，仅刷新视图中的模块树
+            currentRecord.fireUpdate()
+        }
+
+        vscode.window.showInformationMessage('模块拆分完成，请在左侧树中选择子模块继续操作。')
+    } catch (error) {
+        vscode.window.showErrorMessage(`拆分失败: ${error}`)
+    } finally {
+        treeProvider.switchBannedStateForWholeProject(treeNode)
+    }
+}
 
 // Invoked in activation function.
 export function registerWebviewForGranularityPanel(context: vscode.ExtensionContext) {
@@ -48,10 +169,315 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
     )
 
     context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.switchModule', async (payload) => {
+            const modulePath: string = payload?.modulePath || ''
+            if (!modulePath) return
+
+            const aiPath = settings.getAiPath()
+            const moduleAbsPath = path.join(aiPath, modulePath)
+            if (!fs.existsSync(moduleAbsPath)) {
+                vscode.window.showWarningMessage('目标模块路径不存在。')
+                return
+            }
+
+            openGranularityWebview(moduleAbsPath)
+            const contentPath = path.join(moduleAbsPath, 'content.txt')
+            if (fs.existsSync(contentPath)) {
+                const doc = await vscode.workspace.openTextDocument(contentPath)
+                await vscode.window.showTextDocument(doc)
+            }
+        })
+    )
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.createChildModuleByPath', async (payload) => {
+            const modulePath: string = payload?.modulePath || ''
+            const moduleName: string = (payload?.moduleName || '').trim()
+            const moduleDescription: string = (payload?.moduleDescription || '').trim()
+            if (!modulePath || !moduleName) return
+
+            const aiPath = settings.getAiPath()
+            const moduleAbsPath = path.join(aiPath, modulePath)
+            const treeProvider = DesignmentTreeDataProvider.getInstance()
+            const parentNode = findNodeByAbsolutePath(treeProvider.localNodeTree, moduleAbsPath)
+
+            if (!parentNode || parentNode.type !== NodeType.Module) {
+                vscode.window.showWarningMessage('仅支持在模块节点下新增子模块。')
+                return
+            }
+
+            const content = JSON.stringify({
+                description: moduleDescription || `${moduleName} 模块`,
+                dependencies: []
+            }, null, 2)
+
+            await designmentService.createModule(parentNode, moduleName, content)
+            await designmentService.resetFinalizedDesignState(getProjectPathFromNode(parentNode))
+            treeProvider.refresh(parentNode)
+
+            if (currentRecord) {
+                currentRecord.fireUpdate()
+            }
+        })
+    )
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.evolve', async (payload) => {
+            const template = payload?.template || 'globalDetailed'
+            const customPrompt = payload?.customPrompt || ''
+            const language = payload?.language || 'python'
+
+            if (template === 'globalDetailed') {
+                await vscode.commands.executeCommand('refinement.globalRefine', {
+                    refineLevel: 'detailed',
+                    customPrompt
+                })
+                return
+            }
+
+            if (template === 'globalCoarse') {
+                await vscode.commands.executeCommand('refinement.globalRefine', {
+                    refineLevel: 'coarse',
+                    customPrompt
+                })
+                return
+            }
+
+            if (template === 'local') {
+                await vscode.commands.executeCommand('refinement.localRefine', {
+                    customPrompt
+                })
+                return
+            }
+
+            if (template === 'generateCode') {
+                assert(currentRecord, 'No usable record for granularity panel.')
+                const meta = getCurrentModuleMeta(currentRecord)
+                if (!meta.allCompleted) {
+                    vscode.window.showWarningMessage('第一版中仅在全部模块伪代码确认后允许生成代码。')
+                    return
+                }
+
+                await vscode.commands.executeCommand('refinement.generateCode', {
+                    language,
+                    customPrompt
+                })
+                return
+            }
+
+            vscode.window.showWarningMessage(`未知精化模板: ${template}`)
+        })
+    )
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.confirmEvolution', async () => {
+            assert(currentRecord, 'No usable record for granularity panel.')
+
+            const targetRecord = currentRecord
+            const rootPath = targetRecord.getRootPath()
+            const projectRootPath = targetRecord.projectHandler.rootPath
+            const aiPath = settings.getAiPath()
+            const relativePath = path.relative(aiPath, rootPath)
+            const leafModulesPath = path.join(projectRootPath, 'leaf_modules.json')
+
+            // leaf_modules.json 必须已通过"完成设计"操作生成，否则提示用户。
+            if (!fs.existsSync(leafModulesPath)) {
+                vscode.window.showWarningMessage('请先在左侧项目节点上右键选择"完成设计（提取数据结构 + 生成精化顺序）"，生成精化顺序后再确认模块。')
+                return
+            }
+
+            const leafModules = JSON.parse(fs.readFileSync(leafModulesPath, 'utf8'))
+            const seqIndex = leafModules.findIndex((mod: any) => mod.path === relativePath)
+            if (seqIndex < 0) {
+                vscode.window.showWarningMessage('当前模块未在叶子模块顺序中找到，无法确认。')
+                return
+            }
+
+            saveConfirmedSnapshot(projectRootPath, leafModules)
+            targetRecord.projectHandler.setOnGoingModule(seqIndex + 1)
+            targetRecord.fireUpdate()
+            vscode.window.showInformationMessage('当前模块精化已完成，已推进到下一待处理模块。')
+        })
+    )
+
+    // 扩写模块描述：以简述为输入，LLM 生成详尽描述，替代原"结束设计阶段"的副作用
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.expandDescription', async (payload) => {
+            assert(currentRecord, 'No usable record for granularity panel.')
+            const modulePath: string = payload?.modulePath || ''
+            if (!modulePath) return
+
+            const aiPath = settings.getAiPath()
+            const moduleAbsPath = path.join(aiPath, modulePath)
+            const treeProvider = DesignmentTreeDataProvider.getInstance()
+            const treeNode = findNodeByAbsolutePath(treeProvider.localNodeTree, moduleAbsPath)
+
+            if (!treeNode || !treeNode.isLeaf()) {
+                vscode.window.showWarningMessage('仅支持扩写叶子模块描述。')
+                return
+            }
+
+            // 读取模块当前描述（从 content.txt 中 JSON 的 description 字段）
+            const contentPath = path.join(moduleAbsPath, 'content.txt')
+            if (!fs.existsSync(contentPath)) {
+                vscode.window.showWarningMessage('未找到模块内容文件。')
+                return
+            }
+
+            let currentDesc = ''
+            try {
+                const raw = fs.readFileSync(contentPath, 'utf8')
+                const parsed = JSON.parse(raw)
+                currentDesc = parsed.description || raw
+            } catch {
+                currentDesc = fs.readFileSync(contentPath, 'utf8')
+            }
+
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: '正在扩写模块描述...',
+                cancellable: false
+            }, async (progress) => {
+                try {
+                    const systemPrompt = '你是一个软件架构师。请将用户给出的模块简述扩写为更详尽的职责描述（2-4句话），保持技术性和准确性，直接输出描述文本，不加任何额外说明。'
+                    const userPrompt = `模块简述：\n${currentDesc}`
+                    const expanded = await openaiHelper.callOpenAIForJSON(systemPrompt, userPrompt)
+                    const cleanedDesc = expanded.trim()
+
+                    await designmentService.updateLeafModuleDescription(treeNode, cleanedDesc)
+                    await designmentService.discardRefinementFromModulePath(
+                        currentRecord!.projectHandler.rootPath, modulePath, true
+                    )
+                    treeProvider.refresh(treeNode.parent)
+                    currentRecord!.fireUpdate()
+
+                    progress.report({ message: '描述扩写完成！' })
+                    await new Promise(resolve => setTimeout(resolve, 1500))
+                } catch (error) {
+                    vscode.window.showErrorMessage(`扩写描述失败: ${error}`)
+                }
+            })
+        })
+    )
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.updateModuleDescriptionByPath', async (payload) => {
+            assert(currentRecord, 'No usable record for granularity panel.')
+            const targetRecord = currentRecord
+            const modulePath: string = payload?.modulePath || ''
+            const description: string = (payload?.description || '').trim()
+
+            if (!modulePath) {
+                return
+            }
+
+            const projectRootPath = targetRecord.projectHandler.rootPath
+            const aiPath = settings.getAiPath()
+            const moduleAbsPath = path.join(aiPath, modulePath)
+            const treeProvider = DesignmentTreeDataProvider.getInstance()
+            const treeNode = findNodeByAbsolutePath(treeProvider.localNodeTree, moduleAbsPath)
+
+            if (!treeNode || treeNode.type !== NodeType.Module || !treeNode.isLeaf()) {
+                vscode.window.showWarningMessage('仅支持编辑叶子模块描述。')
+                return
+            }
+
+            await designmentService.updateLeafModuleDescription(treeNode, description)
+            await designmentService.discardRefinementFromModulePath(projectRootPath, modulePath, true)
+            treeProvider.refresh(treeNode.parent)
+            targetRecord.fireUpdate()
+        })
+    )
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.splitCurrentModule', async (payload) => {
+            assert(currentRecord, 'No usable record for granularity panel.')
+            const targetPath = currentRecord.getRootPath()
+            await splitModuleByAbsPath(targetPath, payload?.customPrompt || '', context)
+        })
+    )
+
+    // 拆分设计树中指定路径的叶子模块（由面板设计树"拆分"按钮触发）
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.splitModuleByPath', async (payload) => {
+            const modulePath: string = payload?.modulePath || ''
+            const customPrompt: string = payload?.customPrompt || ''
+            if (!modulePath) return
+
+            const aiPath = settings.getAiPath()
+            const moduleAbsPath = path.join(aiPath, modulePath)
+            await splitModuleByAbsPath(moduleAbsPath, customPrompt, context)
+        })
+    )
+
+    // 打开设计树中指定模块的内容文件（由面板节点点击触发）
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.openModuleFile', async (payload) => {
+            const modulePath: string = payload?.modulePath || ''
+            if (!modulePath) return
+            const aiPath = settings.getAiPath()
+            const contentPath = path.join(aiPath, modulePath, 'content.txt')
+            if (!fs.existsSync(contentPath)) return
+            const doc = await vscode.workspace.openTextDocument(contentPath)
+            await vscode.window.showTextDocument(doc)
+        })
+    )
+
+    // 预览内置精化提示词的系统 Prompt 文件（在编辑器中以只读方式打开）
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.previewTemplate', async (payload) => {
+            const template: string = payload?.template || ''
+            const templateFileMap: Record<string, string> = {
+                globalDetailed: '细粒度精化Prompt.md',
+                globalCoarse: '粗粒度精化prompt.md',
+                local: '局部精化prompt.md',
+                generateCode: 'generateCode.md',
+                extractCommonDS: 'commonDataStructure.md'
+            }
+            const fileName = templateFileMap[template]
+            if (!fileName) {
+                vscode.window.showWarningMessage(`未找到模板 "${template}" 对应的提示词文件。`)
+                return
+            }
+            const filePath = path.join(context.extensionUri.fsPath, 'resources', 'prompts', fileName)
+            if (!fs.existsSync(filePath)) {
+                vscode.window.showWarningMessage(`提示词文件不存在: ${fileName}`)
+                return
+            }
+            const doc = await vscode.workspace.openTextDocument(filePath)
+            await vscode.window.showTextDocument(doc, { preview: true })
+        })
+    )
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('refinement.deleteCurrentModule', async () => {
+            assert(currentRecord, 'No usable record for granularity panel.')
+            const targetRecord = currentRecord
+            const targetPath = targetRecord.getRootPath()
+            const treeProvider = DesignmentTreeDataProvider.getInstance()
+            const treeNode = findNodeByAbsolutePath(treeProvider.localNodeTree, targetPath)
+
+            if (!treeNode || treeNode.type !== NodeType.Module || !treeNode.isLeaf()) {
+                vscode.window.showWarningMessage('当前模块不是可删除叶子模块。')
+                return
+            }
+
+            await designmentService.discardRefinementFromModule(treeNode)
+            await designmentService.deleteModuleNode(treeNode)
+            disposeCurrentRecordAndCloseWebview()
+            vscode.window.showInformationMessage('当前叶子模块已删除。')
+        })
+    )
+
+    context.subscriptions.push(
         vscode.commands.registerCommand('refinement.json2pse', async () => {
 
             assert(currentRecord, 'No usable record for granularity panel.')
             const targetRecord: GranularityRecord = currentRecord
+            const ready = await prepareModuleMutation(targetRecord)
+            if (!ready) {
+                return
+            }
 
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
@@ -100,8 +526,13 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
             assert(currentRecord, 'No usable record for granularity panel.')
             const targetRecord: GranularityRecord = currentRecord
+            const ready = await prepareModuleMutation(targetRecord)
+            if (!ready) {
+                return
+            }
 
             const refineLevel = payload && payload.refineLevel ? payload.refineLevel : 'medium'
+            const customPrompt = payload && payload.customPrompt ? payload.customPrompt : ''
             const levelText = refineLevel === 'detailed' ? '细致' : refineLevel === 'coarse' ? '粗糙' : '中等';
 
             await vscode.window.withProgress({
@@ -128,7 +559,8 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     }
 
                     // It will take long here, where currentRecord may change.
-                    const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user, undefined, undefined)
+                    const userPrompt = appendCustomPrompt(prompt.user, customPrompt)
+                    const result = await openaiHelper.callOpenAIForJSON(prompt.system, userPrompt, undefined, undefined)
                     const timestamp = Date.now()
                     const generatedFilePath = path.join(rootPath, `pseudotrans_global_refined_${timestamp}.txt`)
 
@@ -154,6 +586,10 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
 
             assert(currentRecord, 'No usable record for granularity panel.')
             const targetRecord: GranularityRecord = currentRecord
+            const ready = await prepareModuleMutation(targetRecord)
+            if (!ready) {
+                return
+            }
 
             // There must be an active editor which corresponds to the last granularity.
             const editor = vscode.window.activeTextEditor
@@ -184,8 +620,10 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     const projectRootPath = targetRecord.projectHandler.rootPath
                     const commonDSPath = path.join(projectRootPath, 'common_data_structures.json')
 
+                    const customPrompt = payload && payload.customPrompt ? payload.customPrompt : ''
                     const prompt = await openaiHelper.getLocalRefinePrompt(fileContent, startLine, endLine, selectedCode, rootPath, commonDSPath)
-                    const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
+                    const userPrompt = appendCustomPrompt(prompt.user, customPrompt)
+                    const result = await openaiHelper.callOpenAIForJSON(prompt.system, userPrompt)
                     const refinedContent = cleanLLMResponse(result)
 
                     const timestamp = Date.now()
@@ -412,6 +850,7 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
             const targetRecord = currentRecord
 
             const language = payload && payload.language ? payload.language : 'python'
+            const customPrompt = payload && payload.customPrompt ? payload.customPrompt : ''
             const aiPath = settings.getAiPath();
 
             const projectHandler = targetRecord.projectHandler
@@ -483,9 +922,14 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     const lastNode = targetRecord.getLastNode()
                     const fileContent = fs.readFileSync(lastNode.filePath, 'utf8')
                     const prompt = await openaiHelper.getGenerateCodePrompt(fileContent, lastNode.description, language, rootPath)
-                    const result = await openaiHelper.callOpenAIForJSON(prompt.system, prompt.user)
+                    const userPrompt = appendCustomPrompt(prompt.user, customPrompt)
+                    const result = await openaiHelper.callOpenAIForJSON(prompt.system, userPrompt)
                     const generatedCode = cleanLLMResponse(result)
-                    const moduleRelativePath = path.relative(projectRootPath, rootPath);
+                    const rawModuleRelativePath = path.relative(projectRootPath, rootPath)
+                    const relativeSegments = rawModuleRelativePath.split(path.sep).filter(Boolean)
+                    const moduleRelativePath = relativeSegments[0] === 'Root'
+                        ? (relativeSegments.length > 1 ? path.join(...relativeSegments.slice(1)) : '')
+                        : rawModuleRelativePath
                     const generatedFilePath = await writeModule(
                         codeProjectRoot,
                         moduleRelativePath,
@@ -500,9 +944,6 @@ export function registerWebviewForGranularityPanel(context: vscode.ExtensionCont
                     }
 
                     targetRecord.appendNode(generatedFilePath, '实际代码（' + language + '）', 'code', false)
-
-                    projectHandler.setOnGoingModule(seqIndex + 1)
-
 
                     // Switch back to the corresponding module.
                     currentRecord = targetRecord
@@ -540,30 +981,76 @@ export function openGranularityWebview(rootPath: string) {
         const relativePath = path.relative(aiPath, rootPath)
 
         const projectRoot = currentRecord.projectHandler.rootPath
+        const projectName = path.basename(projectRoot)
         const leafModulesPath = path.join(projectRoot, 'leaf_modules.json')
+        const projectRequirementPath = path.join(projectRoot, 'content.txt')
+        const designReady = fs.existsSync(leafModulesPath)
 
         let leafModules: any[] = []
+        let modulesFallback: any[] = []
         let targetMod: any = null
 
         if (fs.existsSync(leafModulesPath)) {
             leafModules = JSON.parse(fs.readFileSync(leafModulesPath, 'utf8'))
             targetMod = leafModules.find((mod: any) => mod.path === relativePath)
         } else {
-            // Fallback: Check modules.json if leaf_modules.json is missing or mod not found
-            const modulesPath = path.join(projectRoot, 'modules.json')
-            if (fs.existsSync(modulesPath)) {
-                const modules = JSON.parse(fs.readFileSync(modulesPath, 'utf8'))
-                // Try to find in modules.json
-                const mod = modules.find((m: any) => m.path === relativePath)
+            // leaf_modules.json 尚不存在，回退到 ongoing_leaf_modules.json。
+            // 注意：不使用 modules.json，因为它包含所有模块（含非叶子），会导致拓扑顺序混乱。
+            const ongoingPath = path.join(projectRoot, 'ongoing_leaf_modules.json')
+            if (fs.existsSync(ongoingPath)) {
+                const ongoing = JSON.parse(fs.readFileSync(ongoingPath, 'utf8'))
+                modulesFallback = ongoing
+                const mod = ongoing.find((m: any) => m.path === relativePath)
                 if (mod) targetMod = mod
             }
         }
 
-        assert(targetMod, `无法在模块列表中找到模块: ${path.basename(rootPath)}`)
+        // 如果找不到该模块（例如已被拆分），发送空状态，让前端显示提示
+        if (!targetMod) {
+            // 此时 modulesFallback 已是 ongoing_leaf_modules.json 内容（仅叶子），可安全用作拓扑展示
+            const sourceModulesFallback = leafModules.length > 0 ? leafModules : modulesFallback
+            GranularityViewProvider.postMessage({
+                type: 'updateView',
+                data: {
+                    nodes: [],
+                    moduleSequence: sourceModulesFallback.map((mod: any, i: number) => ({
+                        name: getModuleName(mod),
+                        description: mod.description || '',
+                        status: mod.status || (i === 0 ? 'ongoing' : 'pending'),
+                        path: mod.path || ''
+                    })),
+                    confirmedSequence: [],
+                    projectName: path.basename(currentRecord!.projectHandler.rootPath),
+                    projectDescription: '',
+                    currentModule: '',
+                    moduleStatus: 'pending',
+                    designReady: designReady,
+                    moduleNotFound: true
+                }
+            })
+            return
+        }
 
-        const currentModuleName = targetMod.name || targetMod.module_name
-        const status = targetMod.status || 'pending'
-        const moduleSequence = leafModules.map((mod: any) => mod.name || mod.module_name)
+        const currentModuleName = getModuleName(targetMod)
+        const status = designReady ? (targetMod.status || 'ongoing') : 'pending'
+        let projectDescription = ''
+        if (fs.existsSync(projectRequirementPath)) {
+            const content = fs.readFileSync(projectRequirementPath, 'utf8').trim()
+            projectDescription = content.split(/\r?\n/).find(line => line.trim().length > 0) || ''
+        }
+        const sourceModules = leafModules.length > 0 ? leafModules : modulesFallback
+        const moduleSequence = sourceModules.map((mod: any, index: number) => ({
+            name: getModuleName(mod),
+            description: mod.description || '',
+            status: mod.status || (index === 0 ? 'ongoing' : 'pending'),
+            path: mod.path || ''
+        }))
+        const confirmedSequence = loadConfirmedSnapshot(projectRoot).map((mod: any) => ({
+            name: getModuleName(mod),
+            description: mod.description || '',
+            status: mod.status || 'pending',
+            path: mod.path || ''
+        }))
 
         // 获取当前粒度（根据活动节点的描述判断）
         const activeNode = nodes.find(n => n.isActive)
@@ -575,8 +1062,12 @@ export function openGranularityWebview(rootPath: string) {
             data: {
                 nodes: nodes,
                 moduleSequence: moduleSequence,
+                confirmedSequence: confirmedSequence,
+                projectName: projectName,
+                projectDescription: projectDescription,
                 currentModule: currentModuleName,
                 moduleStatus: status,
+                designReady: designReady,
                 currentGranularity: currentGranularity
             }
         })
@@ -675,4 +1166,26 @@ export function disposeCurrentRecordAndCloseWebview() {
     }
 
     vscode.commands.executeCommand("workbench.action.closePanel")
+}
+
+function getConfirmedSnapshotPath(projectRootPath: string): string {
+    return path.join(projectRootPath, CONFIRMED_LEAF_MODULES_FILE)
+}
+
+function saveConfirmedSnapshot(projectRootPath: string, modules: any[]): void {
+    const targetPath = getConfirmedSnapshotPath(projectRootPath)
+    fs.writeFileSync(targetPath, JSON.stringify(modules, null, 4), 'utf8')
+}
+
+function loadConfirmedSnapshot(projectRootPath: string): any[] {
+    const targetPath = getConfirmedSnapshotPath(projectRootPath)
+    if (!fs.existsSync(targetPath)) {
+        return []
+    }
+
+    try {
+        return JSON.parse(fs.readFileSync(targetPath, 'utf8'))
+    } catch {
+        return []
+    }
 }

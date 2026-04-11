@@ -78,6 +78,38 @@
         "title": "生成代码"
       },
       {
+        "command": "refinement.evolve",
+        "title": "精化"
+      },
+      {
+        "command": "refinement.confirmEvolution",
+        "title": "确认精化"
+      },
+      {
+        "command": "refinement.splitCurrentModule",
+        "title": "拆分当前模块"
+      },
+      {
+        "command": "refinement.deleteCurrentModule",
+        "title": "删除当前模块"
+      },
+      {
+        "command": "refinement.updateModuleDescriptionByPath",
+        "title": "更新模块描述"
+      },
+      {
+        "command": "refinement.expandDescription",
+        "title": "扩写模块描述"
+      },
+      {
+        "command": "refinement.splitModuleByPath",
+        "title": "拆分指定模块"
+      },
+      {
+        "command": "refinement.previewTemplate",
+        "title": "预览提示词"
+      },
+      {
         "command": "refinement.rollback",
         "title": "回退粒度"
       },
@@ -107,19 +139,17 @@
         "enablement": "viewItem =~ /leaf/ && !(viewItem =~ /fixed/)"
       },
       {
-        "command": "CodeToolBox.firstDivision",
-        "title": "初始模块划分",
-        "enablement": "viewItem =~ /empty/"
+        "command": "CodeToolBox.editModuleDescription",
+        "title": "编辑模块描述",
+        "enablement": "viewItem =~ /leaf/ && viewItem =~ /module/"
       },
       {
-        "command": "CodeToolBox.extractCommonDataStructure",
-        "title": "提取通用数据结构",
-        "enablement": "viewItem =~ /dataStructureExtractable/"
+        "command": "CodeToolBox.finalizeDesign",
+        "title": "完成设计（提取数据结构 + 生成精化顺序）"
       },
       {
-        "command": "CodeToolBox.getLeafModules",
-        "title": "结束设计阶段",
-        "enablement": "viewItem =~ /designmentCompletable/"
+        "command": "refinement.openModuleFile",
+        "title": "打开模块文件"
       }
     ],
     "keybindings": [
@@ -220,24 +250,19 @@
           "group": "2_human_design@2"
         },
         {
-          "command": "CodeToolBox.extractCommonDataStructure",
-          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /project/",
-          "group": "1_ai_design@2"
-        },
-        {
-          "command": "CodeToolBox.firstDivision",
-          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /project/",
-          "group": "1_ai_design@1"
-        },
-        {
           "command": "CodeToolBox.divideModule",
           "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /module/",
           "group": "1_ai_design@4"
         },
         {
-          "command": "CodeToolBox.getLeafModules",
-          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /project/",
-          "group": "1_ai_design@3"
+          "command": "CodeToolBox.finalizeDesign",
+          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /project/ && !(viewItem =~ /empty/)",
+          "group": "1_ai_design@5"
+        },
+        {
+          "command": "CodeToolBox.editModuleDescription",
+          "when": "view == CodeToolBox.chatGPTView && !(viewItem =~ /banned/) && viewItem =~ /leaf/ && viewItem =~ /module/",
+          "group": "2_human_design@3"
         }
       ]
     }
