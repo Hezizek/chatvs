@@ -1076,7 +1076,7 @@ export function openGranularityWebview(rootPath: string) {
         let projectDescription = ''
         if (fs.existsSync(projectRequirementPath)) {
             const content = fs.readFileSync(projectRequirementPath, 'utf8').trim()
-            projectDescription = content.split(/\r?\n/).find(line => line.trim().length > 0) || ''
+            projectDescription = content
         }
         const sourceModules = leafModules.length > 0 ? leafModules : modulesFallback
         const moduleSequence = sourceModules.map((mod: any, index: number) => ({

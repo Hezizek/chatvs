@@ -116,6 +116,8 @@ body[data-mode="design"] .history-container {
     font-size: 0.78em;
     color: var(--vscode-descriptionForeground);
     padding: 3px 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .tree-actions {
@@ -225,6 +227,8 @@ body[data-mode="design"] .history-container {
     font-size: 0.76em;
     color: var(--vscode-descriptionForeground);
     margin-top: 2px;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .panel {

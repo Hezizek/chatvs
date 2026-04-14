@@ -362,7 +362,7 @@ export async function createProject(label: string, requirementText?: string): Pr
     const rootModuleName = 'Root'
     const rootModulePath = path.join(absolutePath, rootModuleName)
     const rootDescription = requirementText && requirementText.trim().length > 0
-        ? (requirementText.trim().split(/\r?\n/).find((line) => line.trim().length > 0) || '项目根模块')
+        ? requirementText.trim()
         : '项目根模块'
 
     const rootDescriptor = {
@@ -403,10 +403,10 @@ export async function createProject(label: string, requirementText?: string): Pr
 
 
 /**
- * 将项目需求文件 (content.txt) 的首行同步为根模块 (Root) 的描述。
+ * 将项目需求文件 (content.txt) 的完整文本同步为根模块 (Root) 的描述。
  * 在用户保存 content.txt 时调用。
  */
-export async function syncRequirementToRootModule(projectAbsPath: string, firstLine: string): Promise<void> {
+export async function syncRequirementToRootModule(projectAbsPath: string, requirementText: string): Promise<void> {
     const rootModulePath = path.join(projectAbsPath, 'Root')
     const rootContentPath = path.join(rootModulePath, 'content.txt')
     const rootDesignmentPath = path.join(rootModulePath, 'designment_info.txt')
@@ -415,7 +415,7 @@ export async function syncRequirementToRootModule(projectAbsPath: string, firstL
     if (fs.existsSync(rootContentPath)) {
         try {
             const data = JSON.parse(fs.readFileSync(rootContentPath, 'utf8'))
-            data.description = firstLine
+            data.description = requirementText
             fs.writeFileSync(rootContentPath, JSON.stringify(data, null, 2), 'utf8')
         } catch { /* 格式不符时跳过 */ }
     }
@@ -424,7 +424,7 @@ export async function syncRequirementToRootModule(projectAbsPath: string, firstL
     if (fs.existsSync(rootDesignmentPath)) {
         try {
             const data = JSON.parse(fs.readFileSync(rootDesignmentPath, 'utf8'))
-            data.description = firstLine
+            data.description = requirementText
             fs.writeFileSync(rootDesignmentPath, JSON.stringify(data, null, 2), 'utf8')
         } catch { /* 格式不符时跳过 */ }
     }
@@ -437,7 +437,7 @@ export async function syncRequirementToRootModule(projectAbsPath: string, firstL
             const arr = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
             const rootMod = arr.find((m: any) => m.name === 'Root' || m.module_name === 'Root')
             if (rootMod) {
-                rootMod.description = firstLine
+                rootMod.description = requirementText
                 fs.writeFileSync(jsonPath, JSON.stringify(arr, null, 2), 'utf8')
             }
         } catch { /* 格式不符时跳过 */ }

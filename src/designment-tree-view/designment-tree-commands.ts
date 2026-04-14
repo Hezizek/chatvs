@@ -62,19 +62,19 @@ const openChatGPTView = async (context: vscode.ExtensionContext, revealView: boo
                 continue
             }
 
-            const firstLine = (() => {
+            const requirementText = (() => {
                 const p = node.getContentFilePath()
                 if (!p) return '项目根模块'
                 try {
                     const content = fs.readFileSync(p, 'utf8').trim()
-                    return content.split(/\r?\n/).find((line: string) => line.trim().length > 0) || '项目根模块'
+                    return content.length > 0 ? content : '项目根模块'
                 } catch {
                     return '项目根模块'
                 }
             })()
 
             const rootContent = JSON.stringify({
-                description: firstLine,
+                description: requirementText,
                 dependencies: []
             }, null, 2)
 
@@ -283,11 +283,10 @@ const openChatGPTView = async (context: vscode.ExtensionContext, revealView: boo
                 )
                 if (!projectNode) return
 
-                const firstLine = doc.getText().trim().split(/\r?\n/)
-                    .find(line => line.trim().length > 0) || ''
-                if (!firstLine) return
+                const requirementText = doc.getText().trim()
+                if (!requirementText) return
 
-                await designmentService.syncRequirementToRootModule(projectAbsPath, firstLine)
+                await designmentService.syncRequirementToRootModule(projectAbsPath, requirementText)
                 designmentTreeDataProvider.refresh(projectNode)
             })
         )
